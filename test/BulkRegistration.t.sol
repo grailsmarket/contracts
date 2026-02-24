@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: MIT
+pragma solidity >=0.8.17 <0.9.0;
+
+import {Test} from "forge-std/Test.sol";
+import {ENS} from "ens-contracts/registry/ENS.sol";
+import {BulkRegistration} from "../src/BulkRegistration.sol";
+import {IETHRegistrarController} from "../src/IETHRegistrarController.sol";
+
+contract BulkRegistrationTest is Test {
+    BulkRegistration public bulk;
+    IETHRegistrarController public controller;
+
+    address constant CONTROLLER = 0x253553366Da8546fC250F225fe3d25d0C782303b;
+    address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
+    address constant PUBLIC_RESOLVER = 0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63;
+
+    bytes32 constant REFERRER = bytes32(uint256(uint160(0xdead)));
+    bytes32 constant SECRET = bytes32(uint256(1));
+    uint256 constant DURATION = 365 days;
+
+    address owner = address(this);
+
+    // Test names of varying lengths
+    string name3 = "qxz"; // 3 chars - most expensive
+    string name4 = "qxzw"; // 4 chars
+    string name5 = "qxzwv"; // 5+ chars - cheapest
+
+    function setUp() public {
+        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"));
+        controller = IETHRegistrarController(CONTROLLER);
+        bulk = new BulkRegistration(CONTROLLER, REFERRER, ENS(ENS_REGISTRY), owner);
+        vm.deal(owner, 100 ether);
+    }
+
+    function _names(string memory a, string memory b) internal pure returns (string[] memory) {
+        string[] memory n = new string[](2);
+        n[0] = a;
+        n[1] = b;
+        return n;
+    }
+
+    function _names3() internal view returns (string[] memory) {
+        string[] memory n = new string[](3);
+        n[0] = name3;
+        n[1] = name4;
+        n[2] = name5;
+        return n;
+    }
+
+    function _emptyBytes() internal pure returns (bytes[] memory) {
+        return new bytes[](0);
+    }
+
+    function _commitAndWait(string[] memory names) internal {
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiCommit(commitments);
+        vm.warp(block.timestamp + 61);
+    }
+
+    function test_available() public view {
+        string[] memory names = _names(name5, name4);
+        bool[] memory results = bulk.available(names);
+        assertEq(results.length, 2);
+        assertTrue(results[0]);
+        assertTrue(results[1]);
+    }
+
+    function test_rentPrices() public view {
+        string[] memory names = _names3();
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        assertEq(prices.length, 3);
+        // 3-char names should be most expensive, 5+ cheapest
+        assertGt(prices[0], prices[1]);
+        assertGt(prices[1], prices[2]);
+        // All prices should be non-zero
+        assertGt(prices[0], 0);
+        assertGt(prices[1], 0);
+        assertGt(prices[2], 0);
+    }
+
+    function test_totalPrice() public view {
+        string[] memory names = _names3();
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        uint256 total = bulk.totalPrice(names, DURATION);
+        assertEq(total, prices[0] + prices[1] + prices[2]);
+    }
+
+    function test_makeCommitments() public view {
+        string[] memory names = _names(name5, name4);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        assertEq(commitments.length, 2);
+        // Commitments should be unique
+        assertTrue(commitments[0] != commitments[1]);
+        // Commitments should be deterministic
+        bytes32[] memory commitments2 = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        assertEq(commitments[0], commitments2[0]);
+        assertEq(commitments[1], commitments2[1]);
+    }
+
+    function test_multiCommit() public {
+        string[] memory names = _names(name5, name4);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        // Should not revert
+        bulk.multiCommit(commitments);
+    }
+
+    function test_multiRegister() public {
+        string[] memory names = _names(name5, name4);
+
+        // Verify names are available before
+        bool[] memory avail = bulk.available(names);
+        assertTrue(avail[0]);
+        assertTrue(avail[1]);
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+
+        // Names should no longer be available
+        avail = bulk.available(names);
+        assertFalse(avail[0]);
+        assertFalse(avail[1]);
+    }
+
+    function test_multiRegister_mixedLengths() public {
+        string[] memory names = _names3();
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+
+        // All names should be registered
+        bool[] memory avail = bulk.available(names);
+        assertFalse(avail[0]);
+        assertFalse(avail[1]);
+        assertFalse(avail[2]);
+    }
+
+    function test_multiRegister_refundsExcess() public {
+        string[] memory names = _names(name5, name4);
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        uint256 excess = 5 ether;
+        uint256 balanceBefore = owner.balance;
+
+        bulk.multiRegister{value: total + excess}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+
+        // Balance should be approximately balanceBefore - total (gas costs aside)
+        uint256 balanceAfter = owner.balance;
+        // The excess should have been refunded, so spent should be close to total
+        uint256 spent = balanceBefore - balanceAfter;
+        assertLt(spent, total + 0.01 ether); // Allow small margin for rounding
+    }
+
+    function test_multiRegister_insufficientFunds() public {
+        string[] memory names = _names(name5, name4);
+
+        _commitAndWait(names);
+
+        // Send way too little ETH
+        vm.expectRevert();
+        bulk.multiRegister{value: 0.0001 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+    }
+
+    function test_multiRegister_emitsEvents() public {
+        string[] memory names = _names(name5, name4);
+
+        _commitAndWait(names);
+
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        uint256 total = prices[0] + prices[1];
+
+        vm.expectEmit(true, true, true, true);
+        emit BulkRegistration.NameRegistered(name5, keccak256(bytes(name5)), owner, prices[0], DURATION, REFERRER);
+        vm.expectEmit(true, true, true, true);
+        emit BulkRegistration.NameRegistered(name4, keccak256(bytes(name4)), owner, prices[1], DURATION, REFERRER);
+
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+    }
+
+    function test_multiRegister_exactPayment() public {
+        string[] memory names = _names(name5, name4);
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        uint256 balanceBefore = owner.balance;
+
+        bulk.multiRegister{value: total}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+
+        // Contract should have zero balance
+        assertEq(address(bulk).balance, 0);
+        // Spent should be exactly total (no gas in this context, but approximately)
+        uint256 spent = balanceBefore - owner.balance;
+        assertEq(spent, total);
+    }
+
+    // Allow receiving ETH refunds in tests
+    receive() external payable {}
+}
