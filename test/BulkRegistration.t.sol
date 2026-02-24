@@ -3,10 +3,11 @@ pragma solidity >=0.8.17 <0.9.0;
 
 import {Test} from "forge-std/Test.sol";
 import {ENS} from "ens-contracts/registry/ENS.sol";
+import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {BulkRegistration} from "../src/BulkRegistration.sol";
 import {IETHRegistrarController} from "../src/IETHRegistrarController.sol";
 
-contract BulkRegistrationTest is Test {
+contract BulkRegistrationTest is Test, IERC1155Receiver {
     BulkRegistration public bulk;
     IETHRegistrarController public controller;
 
@@ -192,13 +193,30 @@ contract BulkRegistrationTest is Test {
 
         bulk.multiRegister{value: total}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
 
-        // Contract should have zero balance
+        // Contract should have zero balance (any controller refund is forwarded back)
         assertEq(address(bulk).balance, 0);
-        // Spent should be exactly total (no gas in this context, but approximately)
+        // Spent should be at most total (controller may refund a small amount)
         uint256 spent = balanceBefore - owner.balance;
-        assertEq(spent, total);
+        assertLe(spent, total);
     }
 
-    // Allow receiving ETH refunds in tests
+    // ERC1155 receiver (NameWrapper mints ERC1155 tokens to the owner)
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
+        external
+        pure
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IERC1155Receiver).interfaceId;
+    }
+
+    // Allow receiving ETH refunds
     receive() external payable {}
 }
