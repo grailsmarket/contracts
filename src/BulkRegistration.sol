@@ -18,12 +18,12 @@ contract BulkRegistration is ReverseClaimer {
     /**
      * @notice The wrapped ETHRegistrarController used for all registration operations
      */
-    IETHRegistrarController public immutable controller;
+    IETHRegistrarController public immutable CONTROLLER;
 
     /**
      * @notice Referrer identifier emitted with every registration event for tracking
      */
-    bytes32 public immutable referrer;
+    bytes32 public immutable REFERRER;
 
     /**
      * @notice Emitted for each name registered through this contract
@@ -55,8 +55,8 @@ contract BulkRegistration is ReverseClaimer {
      * @param _owner Address to claim reverse ENS ownership for this contract
      */
     constructor(address _controller, bytes32 _referrer, ENS _ens, address _owner) ReverseClaimer(_ens, _owner) {
-        controller = IETHRegistrarController(_controller);
-        referrer = _referrer;
+        CONTROLLER = IETHRegistrarController(_controller);
+        REFERRER = _referrer;
     }
 
     /**
@@ -67,7 +67,7 @@ contract BulkRegistration is ReverseClaimer {
     function available(string[] calldata names) external view returns (bool[] memory) {
         bool[] memory results = new bool[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            results[i] = controller.available(names[i]);
+            results[i] = CONTROLLER.available(names[i]);
         }
         return results;
     }
@@ -81,7 +81,7 @@ contract BulkRegistration is ReverseClaimer {
     function rentPrices(string[] calldata names, uint256 duration) external view returns (uint256[] memory) {
         uint256[] memory prices = new uint256[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
+            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
             prices[i] = price.base + price.premium;
         }
         return prices;
@@ -96,7 +96,7 @@ contract BulkRegistration is ReverseClaimer {
     function totalPrice(string[] calldata names, uint256 duration) external view returns (uint256) {
         uint256 total;
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
+            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
             total += price.base + price.premium;
         }
         return total;
@@ -128,7 +128,7 @@ contract BulkRegistration is ReverseClaimer {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                controller.makeCommitment(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+                CONTROLLER.makeCommitment(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -140,7 +140,7 @@ contract BulkRegistration is ReverseClaimer {
      */
     function multiCommit(bytes32[] calldata commitments) external {
         for (uint256 i = 0; i < commitments.length; i++) {
-            controller.commit(commitments[i]);
+            CONTROLLER.commit(commitments[i]);
         }
     }
 
@@ -171,13 +171,13 @@ contract BulkRegistration is ReverseClaimer {
         uint256 totalCost;
 
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
+            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
             uint256 cost = price.base + price.premium;
             totalCost += cost;
 
-            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
 
-            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, referrer);
+            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, REFERRER);
         }
 
         if (msg.value < totalCost) revert InsufficientFunds();
