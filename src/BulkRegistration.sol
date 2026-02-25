@@ -15,10 +15,14 @@ import {IETHRegistrarController} from "./IETHRegistrarController.sol";
  *         Excess ETH is automatically refunded to the caller.
  */
 contract BulkRegistration is ReverseClaimer {
-    /** @notice The wrapped ETHRegistrarController used for all registration operations */
+    /**
+     * @notice The wrapped ETHRegistrarController used for all registration operations
+     */
     IETHRegistrarController public immutable controller;
 
-    /** @notice Referrer identifier emitted with every registration event for tracking */
+    /**
+     * @notice Referrer identifier emitted with every registration event for tracking
+     */
     bytes32 public immutable referrer;
 
     /**
@@ -34,10 +38,14 @@ contract BulkRegistration is ReverseClaimer {
         string name, bytes32 indexed labelHash, address indexed owner, uint256 cost, uint256 duration, bytes32 indexed referrer
     );
 
-    /** @notice Thrown when msg.value is less than the total registration cost */
+    /**
+     * @notice Thrown when msg.value is less than the total registration cost
+     */
     error InsufficientFunds();
 
-    /** @notice Thrown when the ETH refund to the caller fails */
+    /**
+     * @notice Thrown when the ETH refund to the caller fails
+     */
     error RefundFailed();
 
     /**
@@ -180,6 +188,8 @@ contract BulkRegistration is ReverseClaimer {
         }
     }
 
-    /** @notice Accept ETH transfers (needed to receive controller refunds during registration) */
+    /**
+     * @notice Accept ETH transfers (needed to receive controller refunds during registration)
+     */
     receive() external payable {}
 }
