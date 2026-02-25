@@ -48,12 +48,16 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         return n;
     }
 
-    function _emptyBytes() internal pure returns (bytes[] memory) {
-        return new bytes[](0);
+    function _emptyData(uint256 count) internal pure returns (bytes[][] memory) {
+        bytes[][] memory d = new bytes[][](count);
+        for (uint256 i = 0; i < count; i++) {
+            d[i] = new bytes[](0);
+        }
+        return d;
     }
 
     function _commitAndWait(string[] memory names) internal {
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
     }
@@ -88,19 +92,19 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     function test_makeCommitments() public view {
         string[] memory names = _names(name5, name4);
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         assertEq(commitments.length, 2);
         // Commitments should be unique
         assertTrue(commitments[0] != commitments[1]);
         // Commitments should be deterministic
-        bytes32[] memory commitments2 = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bytes32[] memory commitments2 = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         assertEq(commitments[0], commitments2[0]);
         assertEq(commitments[1], commitments2[1]);
     }
 
     function test_multiCommit() public {
         string[] memory names = _names(name5, name4);
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         // Should not revert
         bulk.multiCommit(commitments);
     }
@@ -116,7 +120,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         _commitAndWait(names);
 
         uint256 total = bulk.totalPrice(names, DURATION);
-        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
 
         // Names should no longer be available
         avail = bulk.available(names);
@@ -130,7 +134,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         _commitAndWait(names);
 
         uint256 total = bulk.totalPrice(names, DURATION);
-        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
 
         // All names should be registered
         bool[] memory avail = bulk.available(names);
@@ -148,7 +152,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         uint256 excess = 5 ether;
         uint256 balanceBefore = owner.balance;
 
-        bulk.multiRegister{value: total + excess}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: total + excess}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
 
         // Balance should be approximately balanceBefore - total (gas costs aside)
         uint256 balanceAfter = owner.balance;
@@ -164,7 +168,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
         // Send way too little ETH
         vm.expectRevert();
-        bulk.multiRegister{value: 0.0001 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: 0.0001 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
     }
 
     function test_multiRegister_emitsEvents() public {
@@ -180,7 +184,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         vm.expectEmit(true, true, true, true);
         emit BulkRegistration.NameRegistered(name4, keccak256(bytes(name4)), owner, prices[1], DURATION, REFERRER);
 
-        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
     }
 
     function test_multiRegister_exactPayment() public {
@@ -191,13 +195,48 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         uint256 total = bulk.totalPrice(names, DURATION);
         uint256 balanceBefore = owner.balance;
 
-        bulk.multiRegister{value: total}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyBytes(), false, 0);
+        bulk.multiRegister{value: total}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
 
         // Contract should have zero balance (any controller refund is forwarded back)
         assertEq(address(bulk).balance, 0);
         // Spent should be at most total (controller may refund a small amount)
         uint256 spent = balanceBefore - owner.balance;
         assertLe(spent, total);
+    }
+
+    function test_multiRegister_perNameData() public {
+        string[] memory names = _names(name5, name4);
+
+        // Compute namehashes: namehash(name.eth) = keccak256(ETH_NODE, keccak256(label))
+        bytes32 ethNode = 0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
+        bytes32 node0 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name5))));
+        bytes32 node1 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name4))));
+
+        // Build per-name resolver data: distinct text records per name
+        bytes[][] memory data = new bytes[][](2);
+        data[0] = new bytes[](1);
+        data[0][0] = abi.encodeWithSignature("setText(bytes32,string,string)", node0, "url", "https://alpha.example");
+        data[1] = new bytes[](1);
+        data[1][0] = abi.encodeWithSignature("setText(bytes32,string,string)", node1, "url", "https://bravo.example");
+
+        // Commit with per-name data (commitment includes data hash)
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, data, false, 0);
+        bulk.multiCommit(commitments);
+        vm.warp(block.timestamp + 61);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, data, false, 0);
+
+        // Verify each name got its own text record
+        (bool ok0, bytes memory ret0) =
+            PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node0, "url"));
+        assertTrue(ok0);
+        assertEq(abi.decode(ret0, (string)), "https://alpha.example");
+
+        (bool ok1, bytes memory ret1) =
+            PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node1, "url"));
+        assertTrue(ok1);
+        assertEq(abi.decode(ret1, (string)), "https://bravo.example");
     }
 
     // ERC1155 receiver (NameWrapper mints ERC1155 tokens to the owner)
