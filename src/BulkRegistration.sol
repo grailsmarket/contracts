@@ -187,9 +187,4 @@ contract BulkRegistration is ReverseClaimer {
             if (!success) revert RefundFailed();
         }
     }
-
-    /**
-     * @notice Accept ETH transfers (needed to receive controller refunds during registration)
-     */
-    receive() external payable {}
 }
