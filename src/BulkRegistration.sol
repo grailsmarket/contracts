@@ -81,8 +81,7 @@ contract BulkRegistration is ReverseClaimer {
     function rentPrices(string[] calldata names, uint256 duration) external view returns (uint256[] memory) {
         uint256[] memory prices = new uint256[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
-            prices[i] = price.base + price.premium;
+            prices[i] = _rentPrice(names[i], duration);
         }
         return prices;
     }
@@ -96,8 +95,7 @@ contract BulkRegistration is ReverseClaimer {
     function totalPrice(string[] calldata names, uint256 duration) external view returns (uint256) {
         uint256 total;
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
-            total += price.base + price.premium;
+            total += _rentPrice(names[i], duration);
         }
         return total;
     }
@@ -171,9 +169,7 @@ contract BulkRegistration is ReverseClaimer {
         uint256 totalCost;
 
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
-            uint256 cost = price.base + price.premium;
-            totalCost += cost;
+            uint256 cost = _rentPrice(names[i], duration);
 
             controller.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
 
@@ -192,4 +188,15 @@ contract BulkRegistration is ReverseClaimer {
      * @notice Accept ETH transfers (needed to receive controller refunds during registration)
      */
     receive() external payable {}
+
+    /**
+     * @dev Get the total rent price (base + premium) for a single name
+     * @param name The ENS label to price (without .eth suffix)
+     * @param duration Registration duration in seconds
+     * @return Total price in wei for the name
+     */
+    function _rentPrice(string calldata name, uint256 duration) internal view returns (uint256) {
+        IPriceOracle.Price memory price = controller.rentPrice(name, duration);
+        return price.base + price.premium;
+    }
 }
