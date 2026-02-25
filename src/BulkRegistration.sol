@@ -166,7 +166,6 @@ contract BulkRegistration is ReverseClaimer {
         for (uint256 i = 0; i < names.length; i++) {
             IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
             uint256 cost = price.base + price.premium;
-            totalCost += cost;
 
             controller.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
 
