@@ -2,8 +2,9 @@
 pragma solidity >=0.8.17 <0.9.0;
 
 import {Test} from "forge-std/Test.sol";
-import {ENS} from "ens-contracts/registry/ENS.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import {ENS} from "ens-contracts/registry/ENS.sol";
+import {Resolver} from "ens-contracts/resolvers/Resolver.sol";
 import {BulkRegistration} from "../src/BulkRegistration.sol";
 import {IETHRegistrarController} from "../src/IETHRegistrarController.sol";
 
@@ -31,6 +32,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         controller = IETHRegistrarController(CONTROLLER);
         bulk = new BulkRegistration(CONTROLLER, REFERRER, ENS(ENS_REGISTRY), owner);
         vm.deal(owner, 100 ether);
+        Resolver(PUBLIC_RESOLVER).setApprovalForAll(CONTROLLER, true);
     }
 
     function _names(string memory a, string memory b) internal pure returns (string[] memory) {
