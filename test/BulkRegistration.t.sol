@@ -57,7 +57,8 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
     }
 
     function _commitAndWait(string[] memory names) internal {
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
+        bytes32[] memory commitments =
+            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
     }
@@ -92,19 +93,22 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     function test_makeCommitments() public view {
         string[] memory names = _names(name5, name4);
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
+        bytes32[] memory commitments =
+            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         assertEq(commitments.length, 2);
         // Commitments should be unique
         assertTrue(commitments[0] != commitments[1]);
         // Commitments should be deterministic
-        bytes32[] memory commitments2 = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
+        bytes32[] memory commitments2 =
+            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         assertEq(commitments[0], commitments2[0]);
         assertEq(commitments[1], commitments2[1]);
     }
 
     function test_multiCommit() public {
         string[] memory names = _names(name5, name4);
-        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
+        bytes32[] memory commitments =
+            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), false, 0);
         // Should not revert
         bulk.multiCommit(commitments);
     }
@@ -228,13 +232,11 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, data, false, 0);
 
         // Verify each name got its own text record
-        (bool ok0, bytes memory ret0) =
-            PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node0, "url"));
+        (bool ok0, bytes memory ret0) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node0, "url"));
         assertTrue(ok0);
         assertEq(abi.decode(ret0, (string)), "https://alpha.example");
 
-        (bool ok1, bytes memory ret1) =
-            PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node1, "url"));
+        (bool ok1, bytes memory ret1) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node1, "url"));
         assertTrue(ok1);
         assertEq(abi.decode(ret1, (string)), "https://bravo.example");
     }
