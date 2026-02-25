@@ -13,7 +13,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     address constant CONTROLLER = 0x253553366Da8546fC250F225fe3d25d0C782303b;
     address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
-    address constant PUBLIC_RESOLVER = 0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63;
+    address constant PUBLIC_RESOLVER = 0xF29100983E058B709F3D539b0c765937B804AC15;
 
     bytes32 constant REFERRER = bytes32(uint256(uint160(0xdead)));
     bytes32 constant SECRET = bytes32(uint256(1));
