@@ -39,11 +39,6 @@ contract BulkRegistration is ReverseClaimer {
     );
 
     /**
-     * @notice Thrown when msg.value is less than the total registration cost
-     */
-    error InsufficientFunds();
-
-    /**
      * @notice Thrown when the ETH refund to the caller fails
      */
     error RefundFailed();
@@ -168,19 +163,14 @@ contract BulkRegistration is ReverseClaimer {
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external payable {
-        uint256 totalCost;
-
         for (uint256 i = 0; i < names.length; i++) {
             IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
             uint256 cost = price.base + price.premium;
-            totalCost += cost;
 
             controller.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, referrer);
         }
-
-        if (msg.value < totalCost) revert InsufficientFunds();
 
         if (address(this).balance > 0) {
             (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
