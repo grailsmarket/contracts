@@ -39,11 +39,6 @@ contract BulkRegistration is ReverseClaimer {
     );
 
     /**
-     * @notice Thrown when msg.value is less than the total registration cost
-     */
-    error InsufficientFunds();
-
-    /**
      * @notice Thrown when the ETH refund to the caller fails
      */
     error RefundFailed();
@@ -166,8 +161,6 @@ contract BulkRegistration is ReverseClaimer {
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external payable {
-        uint256 totalCost;
-
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], duration);
 
@@ -175,8 +168,6 @@ contract BulkRegistration is ReverseClaimer {
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, referrer);
         }
-
-        if (msg.value < totalCost) revert InsufficientFunds();
 
         if (address(this).balance > 0) {
             (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
