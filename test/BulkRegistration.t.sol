@@ -35,6 +35,12 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         Resolver(PUBLIC_RESOLVER).setApprovalForAll(CONTROLLER, true);
     }
 
+    function _name1(string memory a) internal pure returns (string[] memory) {
+        string[] memory n = new string[](1);
+        n[0] = a;
+        return n;
+    }
+
     function _names(string memory a, string memory b) internal pure returns (string[] memory) {
         string[] memory n = new string[](2);
         n[0] = a;
@@ -71,6 +77,76 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     function test_constructor_setsReferrer() public view {
         assertEq(bulk.REFERRER(), REFERRER);
+    }
+
+    function test_available_emptyArray() public view {
+        string[] memory names = new string[](0);
+        bool[] memory results = bulk.available(names);
+        assertEq(results.length, 0);
+    }
+
+    function test_available_singleName() public view {
+        string[] memory names = _name1(name5);
+        bool[] memory results = bulk.available(names);
+        assertEq(results.length, 1);
+        assertTrue(results[0]);
+    }
+
+    function test_rentPrices_emptyArray() public view {
+        string[] memory names = new string[](0);
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        assertEq(prices.length, 0);
+    }
+
+    function test_rentPrices_singleName() public view {
+        string[] memory names = _name1(name5);
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        assertEq(prices.length, 1);
+        assertGt(prices[0], 0);
+    }
+
+    function test_totalPrice_emptyArray() public view {
+        string[] memory names = new string[](0);
+        uint256 total = bulk.totalPrice(names, DURATION);
+        assertEq(total, 0);
+    }
+
+    function test_totalPrice_singleName() public view {
+        string[] memory names = _name1(name5);
+        uint256 total = bulk.totalPrice(names, DURATION);
+        uint256[] memory prices = bulk.rentPrices(names, DURATION);
+        assertEq(total, prices[0]);
+    }
+
+    function test_makeCommitments_singleName() public view {
+        string[] memory names = _name1(name5);
+        bytes32[] memory commitments =
+            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
+        assertEq(commitments.length, 1);
+        assertTrue(commitments[0] != bytes32(0));
+    }
+
+    function test_multiRegister_singleName() public {
+        string[] memory names = _name1(name5);
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
+
+        bool[] memory avail = bulk.available(names);
+        assertFalse(avail[0]);
+    }
+
+    function test_multiRegister_emptyArray() public {
+        string[] memory names = new string[](0);
+
+        uint256 balanceBefore = owner.balance;
+        bulk.multiRegister{value: 1 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(0), false, 0);
+
+        // All ETH should be refunded (balance at least what it was before)
+        assertGe(owner.balance, balanceBefore);
+        assertEq(address(bulk).balance, 0);
     }
 
     function test_available() public view {
