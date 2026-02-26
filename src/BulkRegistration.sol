@@ -12,6 +12,7 @@ import {IETHRegistrarController} from "./IETHRegistrarController.sol";
  * @author 0xthrpw
  * @notice Batch registration contract for ENS .eth names via the wrapped ETHRegistrarController.
  *         Supports mixed-length names (3, 4, 5+ chars) with different prices in a single transaction.
+ *         Per-name resolver data allows setting distinct records for each name.
  *         Excess ETH is automatically refunded to the caller.
  */
 contract BulkRegistration is ReverseClaimer {
@@ -37,11 +38,6 @@ contract BulkRegistration is ReverseClaimer {
     event NameRegistered(
         string name, bytes32 indexed labelHash, address indexed owner, uint256 cost, uint256 duration, bytes32 indexed referrer
     );
-
-    /**
-     * @notice Thrown when msg.value is less than the total registration cost
-     */
-    error InsufficientFunds();
 
     /**
      * @notice Thrown when the ETH refund to the caller fails
@@ -81,8 +77,7 @@ contract BulkRegistration is ReverseClaimer {
     function rentPrices(string[] calldata names, uint256 duration) external view returns (uint256[] memory) {
         uint256[] memory prices = new uint256[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
-            prices[i] = price.base + price.premium;
+            prices[i] = _rentPrice(names[i], duration);
         }
         return prices;
     }
@@ -96,8 +91,7 @@ contract BulkRegistration is ReverseClaimer {
     function totalPrice(string[] calldata names, uint256 duration) external view returns (uint256) {
         uint256 total;
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
-            total += price.base + price.premium;
+            total += _rentPrice(names[i], duration);
         }
         return total;
     }
@@ -110,7 +104,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param duration Registration duration in seconds
      * @param secret Random bytes32 used to obscure the commitment
      * @param resolver Address of the resolver to set for each name
-     * @param data Additional resolver data to set during registration
+     * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
      * @param reverseRecord Whether to set a reverse record for the owner
      * @param ownerControlledFuses Fuses to burn on the NameWrapper token
      * @return Array of commitment hashes to pass to multiCommit()
@@ -121,14 +115,14 @@ contract BulkRegistration is ReverseClaimer {
         uint256 duration,
         bytes32 secret,
         address resolver,
-        bytes[] calldata data,
+        bytes[][] calldata data,
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external view returns (bytes32[] memory) {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                CONTROLLER.makeCommitment(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+                controller.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -154,7 +148,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param duration Registration duration in seconds
      * @param secret The same secret used when generating commitments
      * @param resolver Address of the resolver to set for each name
-     * @param data Additional resolver data to set during registration
+     * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
      * @param reverseRecord Whether to set a reverse record for the owner
      * @param ownerControlledFuses Fuses to burn on the NameWrapper token
      */
@@ -164,23 +158,17 @@ contract BulkRegistration is ReverseClaimer {
         uint256 duration,
         bytes32 secret,
         address resolver,
-        bytes[] calldata data,
+        bytes[][] calldata data,
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external payable {
-        uint256 totalCost;
-
         for (uint256 i = 0; i < names.length; i++) {
-            IPriceOracle.Price memory price = CONTROLLER.rentPrice(names[i], duration);
-            uint256 cost = price.base + price.premium;
-            totalCost += cost;
+            uint256 cost = _rentPrice(names[i], duration);
 
-            CONTROLLER.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, REFERRER);
         }
-
-        if (msg.value < totalCost) revert InsufficientFunds();
 
         if (address(this).balance > 0) {
             (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
@@ -192,4 +180,15 @@ contract BulkRegistration is ReverseClaimer {
      * @notice Accept ETH transfers (needed to receive controller refunds during registration)
      */
     receive() external payable {}
+
+    /**
+     * @dev Get the total rent price (base + premium) for a single name
+     * @param name The ENS label to price (without .eth suffix)
+     * @param duration Registration duration in seconds
+     * @return Total price in wei for the name
+     */
+    function _rentPrice(string calldata name, uint256 duration) internal view returns (uint256) {
+        IPriceOracle.Price memory price = controller.rentPrice(name, duration);
+        return price.base + price.premium;
+    }
 }
