@@ -122,7 +122,7 @@ contract BulkRegistration is ReverseClaimer {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                controller.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+                CONTROLLER.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -165,7 +165,7 @@ contract BulkRegistration is ReverseClaimer {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], duration);
 
-            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, REFERRER);
         }
@@ -177,18 +177,13 @@ contract BulkRegistration is ReverseClaimer {
     }
 
     /**
-     * @notice Accept ETH transfers (needed to receive controller refunds during registration)
-     */
-    receive() external payable {}
-
-    /**
      * @dev Get the total rent price (base + premium) for a single name
      * @param name The ENS label to price (without .eth suffix)
      * @param duration Registration duration in seconds
      * @return Total price in wei for the name
      */
     function _rentPrice(string calldata name, uint256 duration) internal view returns (uint256) {
-        IPriceOracle.Price memory price = controller.rentPrice(name, duration);
+        IPriceOracle.Price memory price = CONTROLLER.rentPrice(name, duration);
         return price.base + price.premium;
     }
 }
