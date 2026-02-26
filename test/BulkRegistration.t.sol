@@ -120,8 +120,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     function test_makeCommitments_singleName() public view {
         string[] memory names = _name1(name5);
-        bytes32[] memory commitments =
-            bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
         assertEq(commitments.length, 1);
         assertTrue(commitments[0] != bytes32(0));
     }
@@ -362,9 +361,7 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         uint256 total = bulk.totalPrice(names, DURATION);
         uint256 balanceBefore = owner.balance;
 
-        bulk.multiRegister{value: total + 2 ether}(
-            names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(count), false, 0
-        );
+        bulk.multiRegister{value: total + 2 ether}(names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(count), false, 0);
 
         // All names should be registered
         bool[] memory avail = bulk.available(names);
@@ -425,7 +422,14 @@ contract NoReceiveCaller is IERC1155Receiver {
 
     function doRegister(string[] memory names, uint256 value) external {
         bulk.multiRegister{value: value}(
-            names, address(this), 365 days, bytes32(uint256(1)), 0xF29100983E058B709F3D539b0c765937B804AC15, new bytes[][](names.length), false, 0
+            names,
+            address(this),
+            365 days,
+            bytes32(uint256(1)),
+            0xF29100983E058B709F3D539b0c765937B804AC15,
+            new bytes[][](names.length),
+            false,
+            0
         );
     }
 
