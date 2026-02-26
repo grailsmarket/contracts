@@ -346,6 +346,38 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         caller.doRegister(names, total + 1 ether);
     }
 
+    function test_multiRegister_largeBatch() public {
+        uint256 count = 7;
+        string[] memory names = new string[](count);
+        names[0] = "qxzalpha";
+        names[1] = "qxzbravo";
+        names[2] = "qxzcharl";
+        names[3] = "qxzdelta";
+        names[4] = "qxzecho";
+        names[5] = "qxzfoxt";
+        names[6] = "qxzgolf";
+
+        _commitAndWait(names);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+        uint256 balanceBefore = owner.balance;
+
+        bulk.multiRegister{value: total + 2 ether}(
+            names, owner, DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(count), false, 0
+        );
+
+        // All names should be registered
+        bool[] memory avail = bulk.available(names);
+        for (uint256 i = 0; i < count; i++) {
+            assertFalse(avail[i]);
+        }
+
+        // Contract should be empty, excess refunded
+        assertEq(address(bulk).balance, 0);
+        uint256 spent = balanceBefore - owner.balance;
+        assertLt(spent, total + 0.01 ether);
+    }
+
     // ERC1155 receiver (NameWrapper mints ERC1155 tokens to the owner)
     function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         return IERC1155Receiver.onERC1155Received.selector;
