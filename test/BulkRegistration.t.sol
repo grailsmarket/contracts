@@ -327,6 +327,25 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         assertEq(abi.decode(ret1, (string)), "https://bravo.example");
     }
 
+    function test_multiRegister_revert_refundFailed() public {
+        // Deploy a caller that cannot receive ETH refunds
+        NoReceiveCaller caller = new NoReceiveCaller(bulk);
+        vm.deal(address(caller), 100 ether);
+
+        string[] memory names = _name1(name5);
+
+        // Commit from the no-receive caller (commitments are not sender-bound)
+        bytes32[] memory commitments =
+            bulk.makeCommitments(names, address(caller), DURATION, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
+        bulk.multiCommit(commitments);
+        vm.warp(block.timestamp + 61);
+
+        uint256 total = bulk.totalPrice(names, DURATION);
+
+        vm.expectRevert(BulkRegistration.RefundFailed.selector);
+        caller.doRegister(names, total + 1 ether);
+    }
+
     // ERC1155 receiver (NameWrapper mints ERC1155 tokens to the owner)
     function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         return IERC1155Receiver.onERC1155Received.selector;
@@ -346,4 +365,35 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
 
     // Allow receiving ETH refunds
     receive() external payable {}
+}
+
+/// @dev Helper contract with no receive/fallback — triggers RefundFailed on excess ETH
+contract NoReceiveCaller is IERC1155Receiver {
+    BulkRegistration immutable bulk;
+
+    constructor(BulkRegistration _bulk) {
+        bulk = _bulk;
+    }
+
+    function doRegister(string[] memory names, uint256 value) external {
+        bulk.multiRegister{value: value}(
+            names, address(this), 365 days, bytes32(uint256(1)), 0xF29100983E058B709F3D539b0c765937B804AC15, new bytes[][](names.length), false, 0
+        );
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
+        external
+        pure
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IERC1155Receiver).interfaceId;
+    }
 }
