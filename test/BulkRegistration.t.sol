@@ -65,6 +65,14 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         vm.warp(block.timestamp + 61);
     }
 
+    function test_constructor_setsController() public view {
+        assertEq(address(bulk.CONTROLLER()), CONTROLLER);
+    }
+
+    function test_constructor_setsReferrer() public view {
+        assertEq(bulk.REFERRER(), REFERRER);
+    }
+
     function test_available() public view {
         string[] memory names = _names(name5, name4);
         bool[] memory results = bulk.available(names);
