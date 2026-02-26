@@ -19,12 +19,12 @@ contract BulkRegistration is ReverseClaimer {
     /**
      * @notice The wrapped ETHRegistrarController used for all registration operations
      */
-    IETHRegistrarController public immutable controller;
+    IETHRegistrarController public immutable CONTROLLER;
 
     /**
      * @notice Referrer identifier emitted with every registration event for tracking
      */
-    bytes32 public immutable referrer;
+    bytes32 public immutable REFERRER;
 
     /**
      * @notice Emitted for each name registered through this contract
@@ -51,8 +51,8 @@ contract BulkRegistration is ReverseClaimer {
      * @param _owner Address to claim reverse ENS ownership for this contract
      */
     constructor(address _controller, bytes32 _referrer, ENS _ens, address _owner) ReverseClaimer(_ens, _owner) {
-        controller = IETHRegistrarController(_controller);
-        referrer = _referrer;
+        CONTROLLER = IETHRegistrarController(_controller);
+        REFERRER = _referrer;
     }
 
     /**
@@ -63,7 +63,7 @@ contract BulkRegistration is ReverseClaimer {
     function available(string[] calldata names) external view returns (bool[] memory) {
         bool[] memory results = new bool[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            results[i] = controller.available(names[i]);
+            results[i] = CONTROLLER.available(names[i]);
         }
         return results;
     }
@@ -122,7 +122,7 @@ contract BulkRegistration is ReverseClaimer {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                controller.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+                CONTROLLER.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -134,7 +134,7 @@ contract BulkRegistration is ReverseClaimer {
      */
     function multiCommit(bytes32[] calldata commitments) external {
         for (uint256 i = 0; i < commitments.length; i++) {
-            controller.commit(commitments[i]);
+            CONTROLLER.commit(commitments[i]);
         }
     }
 
@@ -165,9 +165,9 @@ contract BulkRegistration is ReverseClaimer {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], duration);
 
-            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
 
-            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, referrer);
+            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, REFERRER);
         }
 
         if (address(this).balance > 0) {
@@ -177,18 +177,13 @@ contract BulkRegistration is ReverseClaimer {
     }
 
     /**
-     * @notice Accept ETH transfers (needed to receive controller refunds during registration)
-     */
-    receive() external payable {}
-
-    /**
      * @dev Get the total rent price (base + premium) for a single name
      * @param name The ENS label to price (without .eth suffix)
      * @param duration Registration duration in seconds
      * @return Total price in wei for the name
      */
     function _rentPrice(string calldata name, uint256 duration) internal view returns (uint256) {
-        IPriceOracle.Price memory price = controller.rentPrice(name, duration);
+        IPriceOracle.Price memory price = CONTROLLER.rentPrice(name, duration);
         return price.base + price.premium;
     }
 }
