@@ -12,6 +12,7 @@ import {IETHRegistrarController} from "./IETHRegistrarController.sol";
  * @author 0xthrpw
  * @notice Batch registration contract for ENS .eth names via the wrapped ETHRegistrarController.
  *         Supports mixed-length names (3, 4, 5+ chars) with different prices in a single transaction.
+ *         Per-name resolver data allows setting distinct records for each name.
  *         Excess ETH is automatically refunded to the caller.
  */
 contract BulkRegistration is ReverseClaimer {
@@ -103,7 +104,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param duration Registration duration in seconds
      * @param secret Random bytes32 used to obscure the commitment
      * @param resolver Address of the resolver to set for each name
-     * @param data Additional resolver data to set during registration
+     * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
      * @param reverseRecord Whether to set a reverse record for the owner
      * @param ownerControlledFuses Fuses to burn on the NameWrapper token
      * @return Array of commitment hashes to pass to multiCommit()
@@ -114,14 +115,14 @@ contract BulkRegistration is ReverseClaimer {
         uint256 duration,
         bytes32 secret,
         address resolver,
-        bytes[] calldata data,
+        bytes[][] calldata data,
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external view returns (bytes32[] memory) {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                controller.makeCommitment(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+                controller.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -147,7 +148,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param duration Registration duration in seconds
      * @param secret The same secret used when generating commitments
      * @param resolver Address of the resolver to set for each name
-     * @param data Additional resolver data to set during registration
+     * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
      * @param reverseRecord Whether to set a reverse record for the owner
      * @param ownerControlledFuses Fuses to burn on the NameWrapper token
      */
@@ -157,14 +158,14 @@ contract BulkRegistration is ReverseClaimer {
         uint256 duration,
         bytes32 secret,
         address resolver,
-        bytes[] calldata data,
+        bytes[][] calldata data,
         bool reverseRecord,
         uint16 ownerControlledFuses
     ) external payable {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], duration);
 
-            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data, reverseRecord, ownerControlledFuses);
+            controller.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, referrer);
         }
