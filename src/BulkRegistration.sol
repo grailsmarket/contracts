@@ -71,13 +71,13 @@ contract BulkRegistration is ReverseClaimer {
     /**
      * @notice Get individual rent prices for multiple names
      * @param names Array of ENS labels to price
-     * @param duration Registration duration in seconds
+     * @param durations Registration duration in seconds for each name
      * @return Array of prices in wei (base + premium) for each name
      */
-    function rentPrices(string[] calldata names, uint256 duration) external view returns (uint256[] memory) {
+    function rentPrices(string[] calldata names, uint256[] calldata durations) external view returns (uint256[] memory) {
         uint256[] memory prices = new uint256[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            prices[i] = _rentPrice(names[i], duration);
+            prices[i] = _rentPrice(names[i], durations[i]);
         }
         return prices;
     }
@@ -85,13 +85,13 @@ contract BulkRegistration is ReverseClaimer {
     /**
      * @notice Get the total price for registering multiple names
      * @param names Array of ENS labels to price
-     * @param duration Registration duration in seconds
+     * @param durations Registration duration in seconds for each name
      * @return Total price in wei for all names combined
      */
-    function totalPrice(string[] calldata names, uint256 duration) external view returns (uint256) {
+    function totalPrice(string[] calldata names, uint256[] calldata durations) external view returns (uint256) {
         uint256 total;
         for (uint256 i = 0; i < names.length; i++) {
-            total += _rentPrice(names[i], duration);
+            total += _rentPrice(names[i], durations[i]);
         }
         return total;
     }
@@ -101,7 +101,7 @@ contract BulkRegistration is ReverseClaimer {
      * @dev Commitments must be submitted via multiCommit() and waited on (60s) before registering
      * @param names Array of ENS labels to commit
      * @param owner Address that will own the registered names
-     * @param duration Registration duration in seconds
+     * @param durations Registration duration in seconds for each name
      * @param secret Random bytes32 used to obscure the commitment
      * @param resolver Address of the resolver to set for each name
      * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
@@ -112,7 +112,7 @@ contract BulkRegistration is ReverseClaimer {
     function makeCommitments(
         string[] calldata names,
         address owner,
-        uint256 duration,
+        uint256[] calldata durations,
         bytes32 secret,
         address resolver,
         bytes[][] calldata data,
@@ -122,7 +122,7 @@ contract BulkRegistration is ReverseClaimer {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                CONTROLLER.makeCommitment(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+                CONTROLLER.makeCommitment(names[i], owner, durations[i], secret, resolver, data[i], reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -145,7 +145,7 @@ contract BulkRegistration is ReverseClaimer {
      *      Any excess ETH is refunded to msg.sender after all registrations complete.
      * @param names Array of ENS labels to register
      * @param owner Address that will own the registered names
-     * @param duration Registration duration in seconds
+     * @param durations Registration duration in seconds for each name
      * @param secret The same secret used when generating commitments
      * @param resolver Address of the resolver to set for each name
      * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
@@ -155,7 +155,7 @@ contract BulkRegistration is ReverseClaimer {
     function multiRegister(
         string[] calldata names,
         address owner,
-        uint256 duration,
+        uint256[] calldata durations,
         bytes32 secret,
         address resolver,
         bytes[][] calldata data,
@@ -163,11 +163,11 @@ contract BulkRegistration is ReverseClaimer {
         uint16 ownerControlledFuses
     ) external payable {
         for (uint256 i = 0; i < names.length; i++) {
-            uint256 cost = _rentPrice(names[i], duration);
+            uint256 cost = _rentPrice(names[i], durations[i]);
 
-            CONTROLLER.register{value: cost}(names[i], owner, duration, secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(names[i], owner, durations[i], secret, resolver, data[i], reverseRecord, ownerControlledFuses);
 
-            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, duration, REFERRER);
+            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, durations[i], REFERRER);
         }
 
         if (address(this).balance > 0) {
