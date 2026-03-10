@@ -72,10 +72,7 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
      * @param _ens Address of the ENS registry (for reverse resolution)
      * @param _owner Address to set as contract owner and reverse ENS claimant
      */
-    constructor(uint256 _pricePerDay, ENS _ens, address _owner)
-        Ownable(_owner)
-        ReverseClaimer(_ens, _owner)
-    {
+    constructor(uint256 _pricePerDay, ENS _ens, address _owner) Ownable(_owner) ReverseClaimer(_ens, _owner) {
         pricePerDay = _pricePerDay;
     }
 
