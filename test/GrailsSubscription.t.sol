@@ -137,12 +137,14 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_subscribe_acceptsOverpayment() public {
+        uint256 balBefore = address(sub).balance;
+
         vm.prank(user);
         sub.subscribe{value: PRICE_PER_DAY * 10}(1);
 
         uint256 expiry = sub.getSubscription(user);
         assertEq(expiry, block.timestamp + 1 days);
-        assertEq(address(sub).balance, PRICE_PER_DAY * 10);
+        assertEq(address(sub).balance, balBefore + PRICE_PER_DAY * 10);
     }
 
     // -----------------------------------------------------------------------
@@ -167,9 +169,10 @@ contract GrailsSubscriptionTest is Test {
         vm.prank(user);
         sub.subscribe{value: 1 ether}(1);
 
+        uint256 contractBal = address(sub).balance;
         uint256 ownerBefore = owner.balance;
         sub.withdraw();
-        assertEq(owner.balance, ownerBefore + 1 ether);
+        assertEq(owner.balance, ownerBefore + contractBal);
         assertEq(address(sub).balance, 0);
     }
 
@@ -177,12 +180,17 @@ contract GrailsSubscriptionTest is Test {
         vm.prank(user);
         sub.subscribe{value: 1 ether}(1);
 
+        uint256 contractBal = address(sub).balance;
         vm.expectEmit(true, false, false, true);
-        emit GrailsSubscription.Withdrawn(owner, 1 ether);
+        emit GrailsSubscription.Withdrawn(owner, contractBal);
         sub.withdraw();
     }
 
     function test_withdraw_revertsOnNoBalance() public {
+        // Drain any pre-existing balance from deployment
+        if (address(sub).balance > 0) {
+            sub.withdraw();
+        }
         vm.expectRevert(GrailsSubscription.NoBalance.selector);
         sub.withdraw();
     }
