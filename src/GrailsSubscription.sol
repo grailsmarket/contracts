@@ -14,7 +14,9 @@ import {ENS} from "ens-contracts/registry/ENS.sol";
  *         No auto-renewal; call subscribe() again to extend.
  */
 contract GrailsSubscription is Ownable2Step, ReverseClaimer {
-    /// @notice Wei charged per day of subscription
+    /**
+     * @notice Wei charged per day of subscription
+     */
     uint256 public pricePerDay;
 
     struct Subscription {
@@ -23,37 +25,53 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
 
     mapping(address => Subscription) public subscriptions;
 
-    /// @notice Emitted when a user subscribes or extends their subscription
-    /// @param subscriber The address that subscribed
-    /// @param expiry The new expiry timestamp
-    /// @param amount The ETH amount paid
+    /**
+     * @notice Emitted when a user subscribes or extends their subscription
+     * @param subscriber The address that subscribed
+     * @param expiry The new expiry timestamp
+     * @param amount The ETH amount paid
+     */
     event Subscribed(address indexed subscriber, uint256 expiry, uint256 amount);
 
-    /// @notice Emitted when the price per day is updated
-    /// @param oldPrice The previous price per day in wei
-    /// @param newPrice The new price per day in wei
+    /**
+     * @notice Emitted when the price per day is updated
+     * @param oldPrice The previous price per day in wei
+     * @param newPrice The new price per day in wei
+     */
     event PriceUpdated(uint256 oldPrice, uint256 newPrice);
 
-    /// @notice Emitted when the owner withdraws collected funds
-    /// @param to The address that received the funds
-    /// @param amount The amount withdrawn in wei
+    /**
+     * @notice Emitted when the owner withdraws collected funds
+     * @param to The address that received the funds
+     * @param amount The amount withdrawn in wei
+     */
     event Withdrawn(address indexed to, uint256 amount);
 
-    /// @notice Thrown when subscribing for zero days
+    /**
+     * @notice Thrown when subscribing for zero days
+     */
     error MinimumOneDayRequired();
 
-    /// @notice Thrown when msg.value is less than the required payment
+    /**
+     * @notice Thrown when msg.value is less than the required payment
+     */
     error InsufficientPayment();
 
-    /// @notice Thrown when withdrawing with zero contract balance
+    /**
+     * @notice Thrown when withdrawing with zero contract balance
+     */
     error NoBalance();
 
-    /// @notice Thrown when the ETH transfer to the owner fails
+    /**
+     * @notice Thrown when the ETH transfer to the owner fails
+     */
     error WithdrawFailed();
 
-    /// @param _pricePerDay The initial price per day in wei
-    /// @param _ens Address of the ENS registry (for reverse resolution)
-    /// @param _owner Address to set as contract owner and reverse ENS claimant
+    /**
+     * @param _pricePerDay The initial price per day in wei
+     * @param _ens Address of the ENS registry (for reverse resolution)
+     * @param _owner Address to set as contract owner and reverse ENS claimant
+     */
     constructor(uint256 _pricePerDay, ENS _ens, address _owner)
         Ownable(_owner)
         ReverseClaimer(_ens, _owner)
