@@ -20,7 +20,7 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
     uint256 public pricePerDay;
 
     struct Subscription {
-        uint256 expiry; // unix timestamp
+        uint256 expiry; 
     }
 
     mapping(address => Subscription) public subscriptions;

@@ -13,10 +13,12 @@ contract DeploySubscription is Script {
             revert("Unsupported chain");
         }
 
-        uint256 pricePerDay = vm.envUint("PRICE_PER_DAY");
+        // uint256 pricePerDay = vm.envUint("PRICE_PER_DAY");
+        uint256 pricePerDay = 273972602739726;
+        address deployer = vm.envAddress("DEPLOYER");
 
-        vm.startBroadcast();
-        new GrailsSubscription(pricePerDay, ENS(ens), msg.sender);
+        vm.startBroadcast(deployer);
+        new GrailsSubscription(pricePerDay, ENS(ens), deployer);
         vm.stopBroadcast();
     }
 }
