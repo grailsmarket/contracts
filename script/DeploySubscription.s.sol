@@ -4,21 +4,37 @@ pragma solidity >=0.8.17 <0.9.0;
 import {Script} from "forge-std/Script.sol";
 import {ENS} from "ens-contracts/registry/ENS.sol";
 import {GrailsSubscription} from "../src/GrailsSubscription.sol";
+import {GrailsPricing, AggregatorInterface} from "../src/GrailsPricing.sol";
+import {IGrailsPricing} from "../src/IGrailsPricing.sol";
 
 contract DeploySubscription is Script {
     function run() external {
         address ens = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
 
-        if (block.chainid != 1 && block.chainid != 11155111) {
+        address chainlinkOracle;
+        if (block.chainid == 1) {
+            chainlinkOracle = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
+        } else if (block.chainid == 11155111) {
+            chainlinkOracle = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
+        } else {
             revert("Unsupported chain");
         }
 
-        // uint256 pricePerDay = vm.envUint("PRICE_PER_DAY");
-        uint256 pricePerDay = 273972602739726;
+        // ~$10/month tier
+        uint256 tier1Rate = 3_858_024_691_358;
+        // ~$30/month tier
+        uint256 tier2Rate = 11_574_074_074_074;
+
         address deployer = vm.envAddress("DEPLOYER");
 
         vm.startBroadcast(deployer);
-        new GrailsSubscription(pricePerDay, ENS(ens), deployer);
+
+        GrailsPricing pricing = new GrailsPricing(AggregatorInterface(chainlinkOracle), deployer);
+        pricing.setTierPrice(1, tier1Rate);
+        pricing.setTierPrice(2, tier2Rate);
+
+        new GrailsSubscription(IGrailsPricing(address(pricing)), ENS(ens), deployer);
+
         vm.stopBroadcast();
     }
 }

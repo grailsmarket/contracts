@@ -5,35 +5,56 @@ import {Test} from "forge-std/Test.sol";
 import {ENS} from "ens-contracts/registry/ENS.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {GrailsSubscription} from "../src/GrailsSubscription.sol";
+import {GrailsPricing, AggregatorInterface} from "../src/GrailsPricing.sol";
+import {IGrailsPricing} from "../src/IGrailsPricing.sol";
+import {DummyOracle} from "./mocks/DummyOracle.sol";
 
 // ---------------------------------------------------------------------------
-// Fork tests — validates ReverseClaimer integration against mainnet ENS
+// Fork tests — validates ReverseClaimer + oracle integration against mainnet
 // ---------------------------------------------------------------------------
 
 contract GrailsSubscriptionForkTest is Test {
     GrailsSubscription public sub;
+    GrailsPricing public gp;
 
     address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
-    uint256 constant PRICE_PER_DAY = 0.001 ether;
+    address constant CHAINLINK_ETH_USD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
+
+    // ~$10/month
+    uint256 constant TIER1_RATE = 3_858_024_691_358;
+
     address owner = address(this);
 
     function setUp() public {
         vm.createSelectFork(vm.envString("MAINNET_RPC_URL"));
-        sub = new GrailsSubscription(PRICE_PER_DAY, ENS(ENS_REGISTRY), owner);
+
+        gp = new GrailsPricing(AggregatorInterface(CHAINLINK_ETH_USD), owner);
+        gp.setTierPrice(1, TIER1_RATE);
+
+        sub = new GrailsSubscription(IGrailsPricing(address(gp)), ENS(ENS_REGISTRY), owner);
     }
 
     function test_constructor_setsOwner() public view {
         assertEq(sub.owner(), owner);
     }
 
-    function test_constructor_setsPricePerDay() public view {
-        assertEq(sub.pricePerDay(), PRICE_PER_DAY);
+    function test_constructor_setsPricing() public view {
+        assertEq(address(sub.pricing()), address(gp));
     }
 
     function test_constructor_deploySucceeds() public view {
-        // If we got here, the ReverseClaimer constructor didn't revert
         assertTrue(address(sub) != address(0));
     }
+
+    function test_getPrice_returnsSensibleValue() public view {
+        // 30-day subscription at tier 1 should cost between 0.001 and 1 ETH
+        // (reasonable range for ~$10/month at typical ETH prices)
+        uint256 weiCost = sub.getPrice(1, 30);
+        assertTrue(weiCost > 0.001 ether, "Price too low");
+        assertTrue(weiCost < 1 ether, "Price too high");
+    }
+
+    receive() external payable {}
 }
 
 // ---------------------------------------------------------------------------
@@ -42,8 +63,17 @@ contract GrailsSubscriptionForkTest is Test {
 
 contract GrailsSubscriptionTest is Test {
     GrailsSubscription public sub;
+    GrailsPricing public gp;
+    DummyOracle public oracle;
 
-    uint256 constant PRICE_PER_DAY = 0.001 ether;
+    // ETH/USD = $2000
+    int256 constant ORACLE_PRICE = 2000_00000000;
+
+    // ~$10/month tier
+    uint256 constant TIER1_RATE = 3_858_024_691_358;
+    // ~$30/month tier
+    uint256 constant TIER2_RATE = 11_574_074_074_074;
+
     address owner;
     address user = address(0xBEEF);
 
@@ -55,15 +85,25 @@ contract GrailsSubscriptionTest is Test {
     function setUp() public {
         owner = address(this);
 
-        // Mock ENS.owner(ADDR_REVERSE_NODE) → REVERSE_REGISTRAR
+        // Mock ENS
         vm.mockCall(ENS_REGISTRY, abi.encodeWithSignature("owner(bytes32)", ADDR_REVERSE_NODE), abi.encode(REVERSE_REGISTRAR));
-
-        // Mock IReverseRegistrar.claim(owner) → node
         vm.mockCall(REVERSE_REGISTRAR, abi.encodeWithSignature("claim(address)", owner), abi.encode(bytes32(0)));
 
-        sub = new GrailsSubscription(PRICE_PER_DAY, ENS(ENS_REGISTRY), owner);
+        // Deploy oracle + pricing
+        oracle = new DummyOracle(ORACLE_PRICE);
+        gp = new GrailsPricing(AggregatorInterface(address(oracle)), owner);
+        gp.setTierPrice(1, TIER1_RATE);
+        gp.setTierPrice(2, TIER2_RATE);
+
+        // Deploy subscription
+        sub = new GrailsSubscription(IGrailsPricing(address(gp)), ENS(ENS_REGISTRY), owner);
 
         vm.deal(user, 100 ether);
+    }
+
+    /// @dev Helper: get the expected wei price for a tier and duration in days
+    function _expectedWei(uint256 tierId, uint256 durationDays) internal view returns (uint256) {
+        return gp.price(tierId, durationDays * 1 days);
     }
 
     // -----------------------------------------------------------------------
@@ -71,80 +111,137 @@ contract GrailsSubscriptionTest is Test {
     // -----------------------------------------------------------------------
 
     function test_subscribe_singleDay() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY}(1);
+        sub.subscribe{value: cost}(1, 1);
 
         uint256 expiry = sub.getSubscription(user);
         assertEq(expiry, block.timestamp + 1 days);
     }
 
     function test_subscribe_multipleDays() public {
+        uint256 cost = _expectedWei(1, 30);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 30}(30);
+        sub.subscribe{value: cost}(1, 30);
 
         uint256 expiry = sub.getSubscription(user);
         assertEq(expiry, block.timestamp + 30 days);
     }
 
-    function test_subscribe_extendsFromExpiry() public {
+    function test_subscribe_replacesExistingFromNow() public {
+        uint256 cost1 = _expectedWei(1, 10);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 10}(10);
-        uint256 firstExpiry = sub.getSubscription(user);
+        sub.subscribe{value: cost1}(1, 10);
 
         // Warp to midway — subscription still active
         vm.warp(block.timestamp + 5 days);
+        uint256 nowTs = block.timestamp;
 
+        uint256 cost2 = _expectedWei(1, 5);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 5}(5);
-        uint256 secondExpiry = sub.getSubscription(user);
+        sub.subscribe{value: cost2}(1, 5);
 
-        // Should extend from the first expiry, not from now
-        assertEq(secondExpiry, firstExpiry + 5 days);
+        // Should start from now, not extend from old expiry
+        assertEq(sub.getSubscription(user), nowTs + 5 days);
     }
 
-    function test_subscribe_extendsFromNowIfExpired() public {
+    function test_subscribe_replacesExpiredFromNow() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY}(1);
+        sub.subscribe{value: cost}(1, 1);
 
-        // Warp past expiry
         vm.warp(block.timestamp + 10 days);
         uint256 nowTs = block.timestamp;
 
+        uint256 cost2 = _expectedWei(1, 3);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 3}(3);
+        sub.subscribe{value: cost2}(1, 3);
 
-        uint256 expiry = sub.getSubscription(user);
-        assertEq(expiry, nowTs + 3 days);
+        assertEq(sub.getSubscription(user), nowTs + 3 days);
     }
 
     function test_subscribe_emitsEvent() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        vm.expectEmit(true, false, false, true);
-        emit GrailsSubscription.Subscribed(user, block.timestamp + 1 days, PRICE_PER_DAY);
-        sub.subscribe{value: PRICE_PER_DAY}(1);
+        vm.expectEmit(true, true, false, true);
+        emit GrailsSubscription.Subscribed(user, 1, block.timestamp + 1 days, cost);
+        sub.subscribe{value: cost}(1, 1);
     }
 
     function test_subscribe_revertsOnZeroDays() public {
         vm.prank(user);
         vm.expectRevert(GrailsSubscription.MinimumOneDayRequired.selector);
-        sub.subscribe{value: PRICE_PER_DAY}(0);
+        sub.subscribe{value: 1 ether}(1, 0);
     }
 
     function test_subscribe_revertsOnInsufficientPayment() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
         vm.expectRevert(GrailsSubscription.InsufficientPayment.selector);
-        sub.subscribe{value: PRICE_PER_DAY - 1}(1);
+        sub.subscribe{value: cost - 1}(1, 1);
     }
 
-    function test_subscribe_acceptsOverpayment() public {
-        uint256 balBefore = address(sub).balance;
+    function test_subscribe_refundsExcess() public {
+        uint256 cost = _expectedWei(1, 1);
+        uint256 overpay = cost * 10;
+        uint256 balBefore = user.balance;
 
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 10}(1);
+        sub.subscribe{value: overpay}(1, 1);
 
-        uint256 expiry = sub.getSubscription(user);
-        assertEq(expiry, block.timestamp + 1 days);
-        assertEq(address(sub).balance, balBefore + PRICE_PER_DAY * 10);
+        // User should get refunded: overpay - cost
+        assertEq(user.balance, balBefore - cost);
+        // Contract should only hold the exact cost
+        assertEq(address(sub).balance, cost);
+    }
+
+    function test_subscribe_revertsOnUnconfiguredTier() public {
+        vm.prank(user);
+        vm.expectRevert(GrailsPricing.TierNotConfigured.selector);
+        sub.subscribe{value: 1 ether}(99, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Tier switching
+    // -----------------------------------------------------------------------
+
+    function test_subscribe_switchTier() public {
+        uint256 cost1 = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost1}(1, 30);
+
+        (, uint256 tier1) = sub.subscriptions(user);
+        assertEq(tier1, 1);
+
+        vm.warp(block.timestamp + 5 days);
+        uint256 nowTs = block.timestamp;
+
+        uint256 cost2 = _expectedWei(2, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost2}(2, 30);
+
+        (uint256 expiry, uint256 tier2) = sub.subscriptions(user);
+        assertEq(tier2, 2);
+        assertEq(expiry, nowTs + 30 days);
+    }
+
+    function test_subscribe_differentTiersDifferentPrices() public {
+        uint256 cost1 = _expectedWei(1, 30);
+        uint256 cost2 = _expectedWei(2, 30);
+
+        // Tier 2 is ~3x tier 1
+        assertTrue(cost2 > cost1 * 2);
+        assertTrue(cost2 < cost1 * 4);
+    }
+
+    // -----------------------------------------------------------------------
+    // getPrice
+    // -----------------------------------------------------------------------
+
+    function test_getPrice_matchesPricingContract() public view {
+        uint256 fromSub = sub.getPrice(1, 30);
+        uint256 fromPricing = gp.price(1, 30 days);
+        assertEq(fromSub, fromPricing);
     }
 
     // -----------------------------------------------------------------------
@@ -156,8 +253,9 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_getSubscription_returnsExpiryAfterSubscribe() public {
+        uint256 cost = _expectedWei(1, 7);
         vm.prank(user);
-        sub.subscribe{value: PRICE_PER_DAY * 7}(7);
+        sub.subscribe{value: cost}(1, 7);
         assertEq(sub.getSubscription(user), block.timestamp + 7 days);
     }
 
@@ -166,8 +264,9 @@ contract GrailsSubscriptionTest is Test {
     // -----------------------------------------------------------------------
 
     function test_withdraw_sendsBalanceToOwner() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub.subscribe{value: 1 ether}(1);
+        sub.subscribe{value: cost}(1, 1);
 
         uint256 contractBal = address(sub).balance;
         uint256 ownerBefore = owner.balance;
@@ -177,8 +276,9 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_withdraw_emitsEvent() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub.subscribe{value: 1 ether}(1);
+        sub.subscribe{value: cost}(1, 1);
 
         uint256 contractBal = address(sub).balance;
         vm.expectEmit(true, false, false, true);
@@ -187,7 +287,6 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_withdraw_revertsOnNoBalance() public {
-        // Drain any pre-existing balance from deployment
         if (address(sub).balance > 0) {
             sub.withdraw();
         }
@@ -196,8 +295,9 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_withdraw_revertsForNonOwner() public {
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub.subscribe{value: 1 ether}(1);
+        sub.subscribe{value: cost}(1, 1);
 
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
@@ -205,15 +305,15 @@ contract GrailsSubscriptionTest is Test {
     }
 
     function test_withdraw_revertsOnFailedTransfer() public {
-        // Deploy with a NoReceiveOwner as owner
         NoReceiveOwner noReceive = new NoReceiveOwner();
         vm.mockCall(ENS_REGISTRY, abi.encodeWithSignature("owner(bytes32)", ADDR_REVERSE_NODE), abi.encode(REVERSE_REGISTRAR));
         vm.mockCall(REVERSE_REGISTRAR, abi.encodeWithSignature("claim(address)", address(noReceive)), abi.encode(bytes32(0)));
 
-        GrailsSubscription sub2 = new GrailsSubscription(PRICE_PER_DAY, ENS(ENS_REGISTRY), address(noReceive));
+        GrailsSubscription sub2 = new GrailsSubscription(IGrailsPricing(address(gp)), ENS(ENS_REGISTRY), address(noReceive));
 
+        uint256 cost = _expectedWei(1, 1);
         vm.prank(user);
-        sub2.subscribe{value: 1 ether}(1);
+        sub2.subscribe{value: cost}(1, 1);
 
         vm.prank(address(noReceive));
         vm.expectRevert(GrailsSubscription.WithdrawFailed.selector);
@@ -221,26 +321,25 @@ contract GrailsSubscriptionTest is Test {
     }
 
     // -----------------------------------------------------------------------
-    // setPrice
+    // setPricing
     // -----------------------------------------------------------------------
 
-    function test_setPrice_updatesPrice() public {
-        uint256 newPrice = 0.002 ether;
-        sub.setPrice(newPrice);
-        assertEq(sub.pricePerDay(), newPrice);
-    }
+    function test_setPricing_swapsPricingContract() public {
+        DummyOracle oracle2 = new DummyOracle(3000_00000000);
+        GrailsPricing gp2 = new GrailsPricing(AggregatorInterface(address(oracle2)), owner);
+        gp2.setTierPrice(1, TIER1_RATE);
 
-    function test_setPrice_emitsEvent() public {
-        uint256 newPrice = 0.002 ether;
         vm.expectEmit(false, false, false, true);
-        emit GrailsSubscription.PriceUpdated(PRICE_PER_DAY, newPrice);
-        sub.setPrice(newPrice);
+        emit GrailsSubscription.PricingUpdated(address(gp), address(gp2));
+        sub.setPricing(IGrailsPricing(address(gp2)));
+
+        assertEq(address(sub.pricing()), address(gp2));
     }
 
-    function test_setPrice_revertsForNonOwner() public {
+    function test_setPricing_revertsForNonOwner() public {
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
-        sub.setPrice(0.002 ether);
+        sub.setPricing(IGrailsPricing(address(0x1)));
     }
 
     // -----------------------------------------------------------------------
