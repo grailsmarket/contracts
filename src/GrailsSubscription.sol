@@ -25,14 +25,52 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
 
     mapping(address => Subscription) public subscriptions;
 
+    /**
+     * @notice Emitted when a user subscribes or re-subscribes
+     * @param subscriber The address that subscribed
+     * @param tierId The subscription tier selected
+     * @param expiry The new expiry timestamp
+     * @param amount The ETH amount paid
+     */
     event Subscribed(address indexed subscriber, uint256 indexed tierId, uint256 expiry, uint256 amount);
+
+    /**
+     * @notice Emitted when the pricing contract is swapped
+     * @param oldPricing The previous pricing contract address
+     * @param newPricing The new pricing contract address
+     */
     event PricingUpdated(address oldPricing, address newPricing);
+
+    /**
+     * @notice Emitted when the owner withdraws collected funds
+     * @param to The address that received the funds
+     * @param amount The amount withdrawn in wei
+     */
     event Withdrawn(address indexed to, uint256 amount);
 
+    /**
+     * @notice Thrown when subscribing for zero days
+     */
     error MinimumOneDayRequired();
+
+    /**
+     * @notice Thrown when msg.value is less than the required payment
+     */
     error InsufficientPayment();
+
+    /**
+     * @notice Thrown when withdrawing with zero contract balance
+     */
     error NoBalance();
+
+    /**
+     * @notice Thrown when the ETH transfer to the owner fails
+     */
     error WithdrawFailed();
+
+    /**
+     * @notice Thrown when the excess ETH refund to the subscriber fails
+     */
     error RefundFailed();
 
     constructor(IGrailsPricing _pricing, ENS _ens, address _owner) Ownable(_owner) ReverseClaimer(_ens, _owner) {
@@ -77,6 +115,9 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
         return pricing.price(tierId, durationDays * 1 days);
     }
 
+    /**
+     * @notice Owner-only: withdraw collected funds.
+     */
     function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
         if (balance == 0) revert NoBalance();
