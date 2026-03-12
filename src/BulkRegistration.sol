@@ -27,6 +27,11 @@ contract BulkRegistration is ReverseClaimer {
     bytes32 public immutable REFERRER;
 
     /**
+     * @notice The namehash of the .eth TLD node
+     */
+    bytes32 private constant ETH_NODE = 0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
+
+    /**
      * @notice Emitted for each name registered through this contract
      * @param name The ENS label registered (e.g. "example" for example.eth)
      * @param labelHash The keccak256 hash of the name, indexed for filtering
@@ -122,7 +127,7 @@ contract BulkRegistration is ReverseClaimer {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] =
-                CONTROLLER.makeCommitment(names[i], owner, durations[i], secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+                CONTROLLER.makeCommitment(names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses);
         }
         return commitments;
     }
@@ -165,7 +170,7 @@ contract BulkRegistration is ReverseClaimer {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], durations[i]);
 
-            CONTROLLER.register{value: cost}(names[i], owner, durations[i], secret, resolver, data[i], reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses);
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, durations[i], REFERRER);
         }
@@ -173,6 +178,27 @@ contract BulkRegistration is ReverseClaimer {
         if (address(this).balance > 0) {
             (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
             if (!success) revert RefundFailed();
+        }
+    }
+
+    /**
+     * @dev Prepend a setAddr(node, owner) call to the resolver data so that
+     *      the ETH address record is always set during registration.
+     * @param name The ENS label (without .eth suffix)
+     * @param _owner The address to set as the ETH address record
+     * @param originalData Caller-supplied resolver data entries
+     * @return enriched A new array with the setAddr call at index 0 followed by originalData
+     */
+    function _enrichData(string calldata name, address _owner, bytes[] calldata originalData)
+        internal
+        pure
+        returns (bytes[] memory enriched)
+    {
+        bytes32 node = keccak256(abi.encodePacked(ETH_NODE, keccak256(bytes(name))));
+        enriched = new bytes[](originalData.length + 1);
+        enriched[0] = abi.encodeWithSignature("setAddr(bytes32,address)", node, _owner);
+        for (uint256 i = 0; i < originalData.length; i++) {
+            enriched[i + 1] = originalData[i];
         }
     }
 

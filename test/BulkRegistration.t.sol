@@ -375,6 +375,14 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         string[] memory names = _name1(name5);
         uint256[] memory durations = _durations(1);
 
+        // Approve controller on resolver so setAddr (from enriched data) succeeds
+        vm.prank(address(caller));
+        Resolver(PUBLIC_RESOLVER).setApprovalForAll(CONTROLLER, true);
+
+        // Approve controller on resolver so setAddr (from enriched data) succeeds
+        vm.prank(address(caller));
+        Resolver(PUBLIC_RESOLVER).setApprovalForAll(CONTROLLER, true);
+
         // Commit from the no-receive caller (commitments are not sender-bound)
         bytes32[] memory commitments =
             bulk.makeCommitments(names, address(caller), durations, SECRET, PUBLIC_RESOLVER, _emptyData(1), false, 0);
@@ -433,6 +441,71 @@ contract BulkRegistrationTest is Test, IERC1155Receiver {
         // Unavailable after
         bool[] memory after_ = bulk.available(names);
         assertFalse(after_[0]);
+    }
+
+    function test_multiRegister_setsAddrRecord() public {
+        string[] memory names = _names(name5, name4);
+        uint256[] memory durations = _durations(2);
+
+        bytes32 ethNode = 0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
+        bytes32 node0 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name5))));
+        bytes32 node1 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name4))));
+
+        _commitAndWait(names, durations);
+
+        uint256 total = bulk.totalPrice(names, durations);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(2), false, 0);
+
+        // Verify ETH address records were set automatically
+        (bool ok0, bytes memory ret0) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("addr(bytes32)", node0));
+        assertTrue(ok0);
+        assertEq(abi.decode(ret0, (address)), owner);
+
+        (bool ok1, bytes memory ret1) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("addr(bytes32)", node1));
+        assertTrue(ok1);
+        assertEq(abi.decode(ret1, (address)), owner);
+    }
+
+    function test_multiRegister_addrRecordWithCustomData() public {
+        string[] memory names = _names(name5, name4);
+        uint256[] memory durations = _durations(2);
+
+        bytes32 ethNode = 0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
+        bytes32 node0 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name5))));
+        bytes32 node1 = keccak256(abi.encodePacked(ethNode, keccak256(bytes(name4))));
+
+        // Build per-name resolver data with text records
+        bytes[][] memory data = new bytes[][](2);
+        data[0] = new bytes[](1);
+        data[0][0] = abi.encodeWithSignature("setText(bytes32,string,string)", node0, "url", "https://alpha.example");
+        data[1] = new bytes[](1);
+        data[1][0] = abi.encodeWithSignature("setText(bytes32,string,string)", node1, "url", "https://bravo.example");
+
+        // Commit with per-name data
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, data, false, 0);
+        bulk.multiCommit(commitments);
+        vm.warp(block.timestamp + 61);
+
+        uint256 total = bulk.totalPrice(names, durations);
+        bulk.multiRegister{value: total + 1 ether}(names, owner, durations, SECRET, PUBLIC_RESOLVER, data, false, 0);
+
+        // Verify ETH address records were set automatically
+        (bool ok0, bytes memory ret0) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("addr(bytes32)", node0));
+        assertTrue(ok0);
+        assertEq(abi.decode(ret0, (address)), owner);
+
+        (bool ok1, bytes memory ret1) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("addr(bytes32)", node1));
+        assertTrue(ok1);
+        assertEq(abi.decode(ret1, (address)), owner);
+
+        // Verify custom text records also work
+        (bool tok0, bytes memory tret0) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node0, "url"));
+        assertTrue(tok0);
+        assertEq(abi.decode(tret0, (string)), "https://alpha.example");
+
+        (bool tok1, bytes memory tret1) = PUBLIC_RESOLVER.staticcall(abi.encodeWithSignature("text(bytes32,string)", node1, "url"));
+        assertTrue(tok1);
+        assertEq(abi.decode(tret1, (string)), "https://bravo.example");
     }
 
     // ERC1155 receiver (NameWrapper mints ERC1155 tokens to the owner)
