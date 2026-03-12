@@ -126,8 +126,9 @@ contract BulkRegistration is ReverseClaimer {
     ) external view returns (bytes32[] memory) {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
-            commitments[i] =
-                CONTROLLER.makeCommitment(names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses);
+            commitments[i] = CONTROLLER.makeCommitment(
+                names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses
+            );
         }
         return commitments;
     }
@@ -170,7 +171,9 @@ contract BulkRegistration is ReverseClaimer {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], durations[i]);
 
-            CONTROLLER.register{value: cost}(names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses);
+            CONTROLLER.register{value: cost}(
+                names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses
+            );
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, durations[i], REFERRER);
         }
