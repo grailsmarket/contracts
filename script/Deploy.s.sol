@@ -17,11 +17,12 @@ contract Deploy is Script {
         } else {
             revert("Unsupported chain");
         }
+        address deployer = vm.envAddress("DEPLOYER");
+        // bytes32 referrer = vm.envBytes32("REFERRER");
+        bytes32 referrer = 0x0000000000000000000000007e491cde0fbf08e51f54c4fb6b9e24afbd18966d;
 
-        bytes32 referrer = vm.envBytes32("REFERRER");
-
-        vm.startBroadcast();
-        new BulkRegistration(controller, referrer, ENS(ens), msg.sender);
+        vm.startBroadcast(deployer);
+        new BulkRegistration(controller, referrer, ENS(ens), deployer);
         vm.stopBroadcast();
     }
 }
