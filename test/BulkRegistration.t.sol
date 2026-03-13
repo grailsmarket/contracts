@@ -72,8 +72,7 @@ contract BulkRegistrationTest is Test {
     }
 
     function _commitAndWait(string[] memory names, uint256[] memory durations) internal {
-        bytes32[] memory commitments =
-            bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
     }
@@ -187,14 +186,12 @@ contract BulkRegistrationTest is Test {
     function test_makeCommitments() public view {
         string[] memory names = _names(name5, name4);
         uint256[] memory durations = _durations(2);
-        bytes32[] memory commitments =
-            bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
         assertEq(commitments.length, 2);
         // Commitments should be unique
         assertTrue(commitments[0] != commitments[1]);
         // Commitments should be deterministic
-        bytes32[] memory commitments2 =
-            bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
+        bytes32[] memory commitments2 = bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
         assertEq(commitments[0], commitments2[0]);
         assertEq(commitments[1], commitments2[1]);
     }
@@ -379,8 +376,7 @@ contract BulkRegistrationTest is Test {
         Resolver(PUBLIC_RESOLVER).setApprovalForAll(CONTROLLER, true);
 
         // Commit from the no-receive caller (commitments are not sender-bound)
-        bytes32[] memory commitments =
-            bulk.makeCommitments(names, address(caller), durations, SECRET, PUBLIC_RESOLVER, _emptyData(1), 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, address(caller), durations, SECRET, PUBLIC_RESOLVER, _emptyData(1), 0);
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
 
@@ -517,13 +513,7 @@ contract NoReceiveCaller {
 
     function doRegister(string[] memory names, uint256[] memory durations, uint256 value) external {
         bulk.multiRegister{value: value}(
-            names,
-            address(this),
-            durations,
-            bytes32(uint256(1)),
-            0xF29100983E058B709F3D539b0c765937B804AC15,
-            new bytes[][](names.length),
-            0
+            names, address(this), durations, bytes32(uint256(1)), 0xF29100983E058B709F3D539b0c765937B804AC15, new bytes[][](names.length), 0
         );
     }
 }
