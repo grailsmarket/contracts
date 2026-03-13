@@ -7,16 +7,9 @@ import {BulkRegistration} from "../src/BulkRegistration.sol";
 
 contract Deploy is Script {
     function run() external {
-        address controller;
+        address controller = 0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547;
         address ens = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
 
-        if (block.chainid == 1) {
-            controller = 0x253553366Da8546fC250F225fe3d25d0C782303b;
-        } else if (block.chainid == 11155111) {
-            controller = 0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72;
-        } else {
-            revert("Unsupported chain");
-        }
         address deployer = vm.envAddress("DEPLOYER");
         // bytes32 referrer = vm.envBytes32("REFERRER");
         bytes32 referrer = 0x0000000000000000000000007e491cde0fbf08e51f54c4fb6b9e24afbd18966d;

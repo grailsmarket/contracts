@@ -10,14 +10,14 @@ import {IETHRegistrarController} from "./IETHRegistrarController.sol";
  * @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVM MEVM
  * @title BulkRegistration
  * @author 0xthrpw
- * @notice Batch registration contract for ENS .eth names via the wrapped ETHRegistrarController.
+ * @notice Batch registration contract for ENS .eth names via the ETHRegistrarController.
  *         Supports mixed-length names (3, 4, 5+ chars) with different prices in a single transaction.
  *         Per-name resolver data allows setting distinct records for each name.
  *         Excess ETH is automatically refunded to the caller.
  */
 contract BulkRegistration is ReverseClaimer {
     /**
-     * @notice The wrapped ETHRegistrarController used for all registration operations
+     * @notice The ETHRegistrarController used for all registration operations
      */
     IETHRegistrarController public immutable CONTROLLER;
 
@@ -50,7 +50,7 @@ contract BulkRegistration is ReverseClaimer {
     error RefundFailed();
 
     /**
-     * @param _controller Address of the wrapped ETHRegistrarController
+     * @param _controller Address of the ETHRegistrarController
      * @param _referrer Referrer identifier (bytes32-padded address) for tracking
      * @param _ens Address of the ENS registry (for reverse resolution)
      * @param _owner Address to claim reverse ENS ownership for this contract
@@ -110,8 +110,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param secret Random bytes32 used to obscure the commitment
      * @param resolver Address of the resolver to set for each name
      * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
-     * @param reverseRecord Whether to set a reverse record for the owner
-     * @param ownerControlledFuses Fuses to burn on the NameWrapper token
+     * @param reverseRecord Bitmask controlling reverse record behaviour
      * @return Array of commitment hashes to pass to multiCommit()
      */
     function makeCommitments(
@@ -121,13 +120,21 @@ contract BulkRegistration is ReverseClaimer {
         bytes32 secret,
         address resolver,
         bytes[][] calldata data,
-        bool reverseRecord,
-        uint16 ownerControlledFuses
+        uint8 reverseRecord
     ) external view returns (bytes32[] memory) {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
             commitments[i] = CONTROLLER.makeCommitment(
-                names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses
+                IETHRegistrarController.Registration({
+                    label: names[i],
+                    owner: owner,
+                    duration: durations[i],
+                    secret: secret,
+                    resolver: resolver,
+                    data: _enrichData(names[i], owner, data[i]),
+                    reverseRecord: reverseRecord,
+                    referrer: REFERRER
+                })
             );
         }
         return commitments;
@@ -155,8 +162,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param secret The same secret used when generating commitments
      * @param resolver Address of the resolver to set for each name
      * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
-     * @param reverseRecord Whether to set a reverse record for the owner
-     * @param ownerControlledFuses Fuses to burn on the NameWrapper token
+     * @param reverseRecord Bitmask controlling reverse record behaviour
      */
     function multiRegister(
         string[] calldata names,
@@ -165,14 +171,22 @@ contract BulkRegistration is ReverseClaimer {
         bytes32 secret,
         address resolver,
         bytes[][] calldata data,
-        bool reverseRecord,
-        uint16 ownerControlledFuses
+        uint8 reverseRecord
     ) external payable {
         for (uint256 i = 0; i < names.length; i++) {
             uint256 cost = _rentPrice(names[i], durations[i]);
 
             CONTROLLER.register{value: cost}(
-                names[i], owner, durations[i], secret, resolver, _enrichData(names[i], owner, data[i]), reverseRecord, ownerControlledFuses
+                IETHRegistrarController.Registration({
+                    label: names[i],
+                    owner: owner,
+                    duration: durations[i],
+                    secret: secret,
+                    resolver: resolver,
+                    data: _enrichData(names[i], owner, data[i]),
+                    reverseRecord: reverseRecord,
+                    referrer: REFERRER
+                })
             );
 
             emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, durations[i], REFERRER);
