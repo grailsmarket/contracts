@@ -19,7 +19,9 @@ interface AggregatorInterface {
 contract GrailsPricing is IGrailsPricing, Ownable2Step {
     AggregatorInterface public usdOracle;
 
-    /// @notice Tier ID → attoUSD-per-second rate
+    /**
+     * @notice Mapping of subscription tier IDs to their price rates in attoUSD per second.
+     */
     mapping(uint256 => uint256) public tierPrices;
 
     error TierNotConfigured();
@@ -30,30 +32,43 @@ contract GrailsPricing is IGrailsPricing, Ownable2Step {
         usdOracle = _oracle;
     }
 
-    /// @inheritdoc IGrailsPricing
+    /**
+     * @notice Returns the price in wei for a given tier and duration.
+     * @param tierId The subscription tier identifier.
+     * @param duration The subscription duration in seconds.
+     * @return weiPrice The price in wei.
+     */
     function price(uint256 tierId, uint256 duration) external view returns (uint256 weiPrice) {
         uint256 rate = tierPrices[tierId];
         if (rate == 0) revert TierNotConfigured();
         return attoUSDToWei(rate * duration);
     }
 
-    /// @notice Set or update a tier's USD rate.
-    /// @param tierId The tier identifier.
-    /// @param pricePerSecond The price in attoUSD per second (18-decimal USD).
+    /**
+     * @notice Set or update a tier's USD rate.
+     * @param tierId The tier identifier.
+     * @param pricePerSecond The price in attoUSD per second (18-decimal USD).
+     */
     function setTierPrice(uint256 tierId, uint256 pricePerSecond) external onlyOwner {
         uint256 oldPrice = tierPrices[tierId];
         tierPrices[tierId] = pricePerSecond;
         emit TierPriceUpdated(tierId, oldPrice, pricePerSecond);
     }
 
-    /// @notice Convert attoUSD to wei using the oracle's ETH/USD price.
-    /// @dev Identical to ENS StablePriceOracle (line 83-86).
+    /**
+     * @notice Convert attoUSD to wei using the oracle's ETH/USD price.
+     * @dev Identical to ENS StablePriceOracle (line 83-86).
+     * @param amount The amount in attoUSD.
+     */
     function attoUSDToWei(uint256 amount) internal view returns (uint256) {
         uint256 ethPrice = uint256(usdOracle.latestAnswer());
         return (amount * 1e8) / ethPrice;
     }
 
-    /// @notice Convert wei to attoUSD — view helper for frontends.
+    /**
+     * @notice Convert wei to attoUSD — view helper for frontends.
+     * @param amount The amount in wei.
+     */
     function weiToAttoUSD(uint256 amount) external view returns (uint256) {
         uint256 ethPrice = uint256(usdOracle.latestAnswer());
         return (amount * ethPrice) / 1e8;

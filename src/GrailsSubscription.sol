@@ -128,6 +128,7 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
 
     /**
      * @notice Owner-only: swap the pricing contract.
+     * @param _pricing The new pricing contract address
      */
     function setPricing(IGrailsPricing _pricing) external onlyOwner {
         address oldPricing = address(pricing);
