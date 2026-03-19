@@ -1,6 +1,6 @@
 # Grails Contracts
 
-Solidity contracts for [Grails](https://grails.wtf): batch ENS `.eth` name registration and tiered subscriptions. Built with [Foundry](https://book.getfoundry.sh/).
+Solidity contracts for [Grails](https://grails.app): batch ENS `.eth` name registration and tiered subscriptions. Built with [Foundry](https://book.getfoundry.sh/).
 
 ## Features
 
