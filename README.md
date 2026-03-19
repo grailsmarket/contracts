@@ -1,6 +1,6 @@
 # Grails Contracts
 
-Solidity contracts for [Grails](https://grails.wtf): batch ENS `.eth` name registration and Grails PRO subscriptions. Built with [Foundry](https://book.getfoundry.sh/).
+Solidity contracts for [Grails](https://grails.wtf): batch ENS `.eth` name registration and tiered subscriptions. Built with [Foundry](https://book.getfoundry.sh/).
 
 ## Features
 
@@ -12,9 +12,10 @@ Solidity contracts for [Grails](https://grails.wtf): batch ENS `.eth` name regis
 - **Batch utilities** — bulk availability checks, price quotes, commitment generation
 
 ### Subscriptions
-- **Pay-per-day subscription** — subscribe to Grails PRO for any number of days
-- **Extend active subscriptions** — additional days stack on current expiry
-- **Owner-controlled pricing** — contract owner can update the daily rate
+- **Multi-tier subscriptions** — subscribe to Pro, Plus, or Gold for any number of days
+- **Oracle-based USD pricing** — tier prices are set in attoUSD/second; ETH costs are derived at transaction time via a Chainlink ETH/USD oracle
+- **Tier upgrades** — upgrade to a higher tier and convert remaining time proportionally based on tier price rates (no value lost)
+- **Automatic refunds** — excess ETH is returned in the same transaction
 - **Owner withdrawal** — owner can withdraw collected funds
 - **Ownable2Step** — safe two-step ownership transfers
 
@@ -24,9 +25,11 @@ Solidity contracts for [Grails](https://grails.wtf): batch ENS `.eth` name regis
 |----------|-------------|
 | `src/BulkRegistration.sol` | Batch commit, register, and view functions for ENS names |
 | `src/IETHRegistrarController.sol` | Interface for the wrapped ETHRegistrarController |
-| `src/GrailsSubscription.sol` | Subscription contract for Grails PRO tier |
+| `src/GrailsSubscription.sol` | Subscription management — subscribe, upgrade, and query |
+| `src/GrailsPricing.sol` | USD-based tier pricing with Chainlink oracle integration |
+| `src/IGrailsPricing.sol` | Interface for the pricing contract |
 | `script/Deploy.s.sol` | Deployment script for BulkRegistration (mainnet + sepolia) |
-| `script/DeploySubscription.s.sol` | Deployment script for GrailsSubscription |
+| `script/DeploySubscription.s.sol` | Deployment script for GrailsPricing + GrailsSubscription |
 
 ## Usage
 
@@ -48,9 +51,13 @@ forge build
 
 ### Test
 
-Tests run against a mainnet fork (both registration and subscription suites):
+Unit tests run without a fork. Fork tests (registration and subscription oracle integration) require a mainnet RPC:
 
 ```bash
+# Unit tests only
+forge test -vvv
+
+# Including fork tests
 forge test --fork-url $MAINNET_RPC_URL -vvv
 ```
 
@@ -78,7 +85,8 @@ forge script script/DeploySubscription.s.sol --rpc-url $MAINNET_RPC_URL --broadc
 
 ## Subscription Flow
 
-1. **Check price** — read `pricePerDay()` for the current daily rate
-2. **Subscribe** — call `subscribe{value: pricePerDay * days}(durationDays)`
-3. **Check status** — call `getSubscription(address)` to view expiry timestamp
-4. **Extend** — call `subscribe()` again; additional days extend from current expiry if still active
+1. **Check price** — call `getPrice(tierId, durationDays)` to get the required ETH for a tier and duration
+2. **Subscribe** — call `subscribe{value: cost}(tierId, durationDays)` to start a subscription (replaces any existing subscription from the current timestamp)
+3. **Check status** — call `getSubscription(address)` to view expiry timestamp, or read `subscriptions(address)` for both expiry and tier ID
+4. **Upgrade** — call `upgrade(newTierId, extraDays)` to move to a higher tier; remaining time is converted proportionally based on the tier price ratio, and `extraDays` can be purchased in the same transaction
+5. **Preview upgrade** — call `previewUpgrade(address, newTierId)` to see the projected expiry before committing
