@@ -73,6 +73,8 @@ contract GrailsSubscriptionTest is Test {
     uint256 constant TIER1_RATE = 3_858_024_691_358;
     // ~$30/month tier
     uint256 constant TIER2_RATE = 11_574_074_074_074;
+    // ~$50/month tier
+    uint256 constant TIER3_RATE = 19_290_123_456_790;
 
     address owner;
     address user = address(0xBEEF);
@@ -94,6 +96,7 @@ contract GrailsSubscriptionTest is Test {
         gp = new GrailsPricing(AggregatorInterface(address(oracle)), owner);
         gp.setTierPrice(1, TIER1_RATE);
         gp.setTierPrice(2, TIER2_RATE);
+        gp.setTierPrice(3, TIER3_RATE);
 
         // Deploy subscription
         sub = new GrailsSubscription(IGrailsPricing(address(gp)), ENS(ENS_REGISTRY), owner);
@@ -232,6 +235,288 @@ contract GrailsSubscriptionTest is Test {
         // Tier 2 is ~3x tier 1
         assertTrue(cost2 > cost1 * 2);
         assertTrue(cost2 < cost1 * 4);
+    }
+
+    // -----------------------------------------------------------------------
+    // upgrade
+    // -----------------------------------------------------------------------
+
+    function test_upgrade_basicConversion() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 nowTs = block.timestamp;
+
+        // 15 days remaining on tier 1, upgrade to tier 2
+        uint256 remainingSec = 15 days;
+        uint256 convertedSec = (remainingSec * TIER1_RATE) / TIER2_RATE;
+
+        vm.prank(user);
+        sub.upgrade(2, 0);
+
+        (uint256 expiry, uint256 tierId) = sub.subscriptions(user);
+        assertEq(tierId, 2);
+        assertEq(expiry, nowTs + convertedSec);
+    }
+
+    function test_upgrade_exactRatioMath() public {
+        // Tier 1 ~$10/mo, Tier 2 ~$30/mo → ratio ~3:1
+        // 15 days remaining → ~5 days on tier 2
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 nowTs = block.timestamp;
+
+        vm.prank(user);
+        sub.upgrade(2, 0);
+
+        uint256 expiry = sub.getSubscription(user);
+        uint256 convertedDays = (expiry - nowTs) / 1 days;
+
+        // Should be approximately 5 days (exact value depends on rate precision)
+        assertApproxEqAbs(convertedDays, 5, 1);
+    }
+
+    function test_upgrade_tierIdUpdated() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 10 days);
+
+        vm.prank(user);
+        sub.upgrade(2, 0);
+
+        (, uint256 tierId) = sub.subscriptions(user);
+        assertEq(tierId, 2);
+    }
+
+    function test_upgrade_emitsEvent() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 nowTs = block.timestamp;
+
+        uint256 remainingSec = 15 days;
+        uint256 convertedSec = (remainingSec * TIER1_RATE) / TIER2_RATE;
+        uint256 expectedExpiry = nowTs + convertedSec;
+
+        vm.prank(user);
+        vm.expectEmit(true, true, true, true);
+        emit GrailsSubscription.Upgraded(user, 1, 2, expectedExpiry, 0);
+        sub.upgrade(2, 0);
+    }
+
+    function test_upgrade_withExtraDays() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 nowTs = block.timestamp;
+
+        uint256 remainingSec = 15 days;
+        uint256 convertedSec = (remainingSec * TIER1_RATE) / TIER2_RATE;
+
+        uint256 extraCost = _expectedWei(2, 10);
+        vm.prank(user);
+        sub.upgrade{value: extraCost}(2, 10);
+
+        (uint256 expiry,) = sub.subscriptions(user);
+        assertEq(expiry, nowTs + convertedSec + 10 days);
+    }
+
+    function test_upgrade_withExtraDaysPayment() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        uint256 extraCost = _expectedWei(2, 10);
+        uint256 balBefore = user.balance;
+
+        vm.prank(user);
+        sub.upgrade{value: extraCost}(2, 10);
+
+        assertEq(user.balance, balBefore - extraCost);
+    }
+
+    function test_upgrade_withExtraDaysRefundsExcess() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        uint256 extraCost = _expectedWei(2, 10);
+        uint256 overpay = extraCost * 5;
+        uint256 balBefore = user.balance;
+
+        vm.prank(user);
+        sub.upgrade{value: overpay}(2, 10);
+
+        assertEq(user.balance, balBefore - extraCost);
+    }
+
+    function test_upgrade_revertsOnExpired() public {
+        uint256 cost = _expectedWei(1, 1);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 1);
+
+        vm.warp(block.timestamp + 2 days);
+
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.NoActiveSubscription.selector);
+        sub.upgrade(2, 0);
+    }
+
+    function test_upgrade_revertsOnNoSubscription() public {
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.NoActiveSubscription.selector);
+        sub.upgrade(2, 0);
+    }
+
+    function test_upgrade_revertsOnSameTier() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.NotAnUpgrade.selector);
+        sub.upgrade(1, 0);
+    }
+
+    function test_upgrade_revertsOnDowngrade() public {
+        uint256 cost = _expectedWei(2, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(2, 30);
+
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.NotAnUpgrade.selector);
+        sub.upgrade(1, 0);
+    }
+
+    function test_upgrade_revertsOnUnconfiguredTier() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.TierNotConfigured.selector);
+        sub.upgrade(99, 0);
+    }
+
+    function test_upgrade_revertsOnInsufficientPayment() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        uint256 extraCost = _expectedWei(2, 10);
+        vm.prank(user);
+        vm.expectRevert(GrailsSubscription.InsufficientPayment.selector);
+        sub.upgrade{value: extraCost - 1}(2, 10);
+    }
+
+    function test_upgrade_pureConversionNoEth() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        uint256 balBefore = user.balance;
+        vm.prank(user);
+        sub.upgrade(2, 0);
+
+        assertEq(user.balance, balBefore);
+    }
+
+    function test_upgrade_refundsAccidentalEth() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        uint256 balBefore = user.balance;
+        vm.prank(user);
+        sub.upgrade{value: 1 ether}(2, 0);
+
+        assertEq(user.balance, balBefore);
+    }
+
+    function test_upgrade_tier1ToTier3() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 nowTs = block.timestamp;
+
+        uint256 remainingSec = 15 days;
+        uint256 convertedSec = (remainingSec * TIER1_RATE) / TIER3_RATE;
+
+        vm.prank(user);
+        sub.upgrade(3, 0);
+
+        (uint256 expiry, uint256 tierId) = sub.subscriptions(user);
+        assertEq(tierId, 3);
+        assertEq(expiry, nowTs + convertedSec);
+    }
+
+    // -----------------------------------------------------------------------
+    // previewUpgrade
+    // -----------------------------------------------------------------------
+
+    function test_previewUpgrade_matchesActual() public {
+        uint256 cost = _expectedWei(1, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 30);
+
+        vm.warp(block.timestamp + 15 days);
+
+        (uint256 previewExpiry, uint256 previewConverted) = sub.previewUpgrade(user, 2);
+
+        vm.prank(user);
+        sub.upgrade(2, 0);
+
+        (uint256 actualExpiry,) = sub.subscriptions(user);
+        assertEq(previewExpiry, actualExpiry);
+
+        uint256 remainingSec = 15 days;
+        uint256 expectedConverted = (remainingSec * TIER1_RATE) / TIER2_RATE;
+        assertEq(previewConverted, expectedConverted);
+    }
+
+    function test_previewUpgrade_returnsZeroForExpired() public {
+        uint256 cost = _expectedWei(1, 1);
+        vm.prank(user);
+        sub.subscribe{value: cost}(1, 1);
+
+        vm.warp(block.timestamp + 2 days);
+
+        (uint256 previewExpiry, uint256 previewConverted) = sub.previewUpgrade(user, 2);
+        assertEq(previewExpiry, 0);
+        assertEq(previewConverted, 0);
+    }
+
+    function test_previewUpgrade_returnsZeroForDowngrade() public {
+        uint256 cost = _expectedWei(2, 30);
+        vm.prank(user);
+        sub.subscribe{value: cost}(2, 30);
+
+        (uint256 previewExpiry, uint256 previewConverted) = sub.previewUpgrade(user, 1);
+        assertEq(previewExpiry, 0);
+        assertEq(previewConverted, 0);
     }
 
     // -----------------------------------------------------------------------

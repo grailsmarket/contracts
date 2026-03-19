@@ -64,8 +64,7 @@ contract BulkRegistrationGasTest is Test {
         uint256[] memory durations = _durations(count);
 
         // Commit and wait
-        bytes32[] memory commitments =
-            bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(count), 0);
+        bytes32[] memory commitments = bulk.makeCommitments(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(count), 0);
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
 
