@@ -24,6 +24,8 @@ contract DeploySubscription is Script {
         uint256 tier1Rate = 3_858_024_691_358;
         // ~$30/month tier
         uint256 tier2Rate = 11_574_074_074_074;
+        // ~$50/month tier (placeholder — adjust to final gold price)
+        uint256 tier3Rate = 19_290_123_456_790;
 
         address deployer = vm.envAddress("DEPLOYER");
 
@@ -32,6 +34,7 @@ contract DeploySubscription is Script {
         GrailsPricing pricing = new GrailsPricing(AggregatorInterface(chainlinkOracle), deployer);
         pricing.setTierPrice(1, tier1Rate);
         pricing.setTierPrice(2, tier2Rate);
+        pricing.setTierPrice(3, tier3Rate);
 
         new GrailsSubscription(IGrailsPricing(address(pricing)), ENS(ens), deployer);
 

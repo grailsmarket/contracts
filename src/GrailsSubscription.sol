@@ -49,6 +49,16 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
     event Withdrawn(address indexed to, uint256 amount);
 
     /**
+     * @notice Emitted when a user upgrades their subscription tier
+     * @param subscriber The address that upgraded
+     * @param oldTierId The previous tier
+     * @param newTierId The new (higher) tier
+     * @param expiry The new expiry timestamp after conversion
+     * @param amount The ETH amount paid for additional days (0 if pure conversion)
+     */
+    event Upgraded(address indexed subscriber, uint256 indexed oldTierId, uint256 indexed newTierId, uint256 expiry, uint256 amount);
+
+    /**
      * @notice Thrown when subscribing for zero days
      */
     error MinimumOneDayRequired();
@@ -72,6 +82,21 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
      * @notice Thrown when the excess ETH refund to the subscriber fails
      */
     error RefundFailed();
+
+    /**
+     * @notice Thrown when upgrading with no active (non-expired) subscription
+     */
+    error NoActiveSubscription();
+
+    /**
+     * @notice Thrown when the target tier rate is not strictly higher than the current tier rate
+     */
+    error NotAnUpgrade();
+
+    /**
+     * @notice Thrown when the target tier is not configured (rate == 0)
+     */
+    error TierNotConfigured();
 
     constructor(IGrailsPricing _pricing, ENS _ens, address _owner) Ownable(_owner) ReverseClaimer(_ens, _owner) {
         pricing = _pricing;
@@ -113,6 +138,70 @@ contract GrailsSubscription is Ownable2Step, ReverseClaimer {
      */
     function getPrice(uint256 tierId, uint256 durationDays) external view returns (uint256) {
         return pricing.price(tierId, durationDays * 1 days);
+    }
+
+    /**
+     * @notice Upgrade an active subscription to a higher tier.
+     *         Remaining time is proportionally converted based on attoUSD/sec rates.
+     *         Optionally pay ETH for additional days on the new tier.
+     * @param newTierId The tier to upgrade to (must have a strictly higher rate).
+     * @param extraDays Additional days to purchase on the new tier (can be 0).
+     */
+    function upgrade(uint256 newTierId, uint256 extraDays) external payable {
+        Subscription storage sub = subscriptions[msg.sender];
+
+        if (sub.expiry <= block.timestamp) revert NoActiveSubscription();
+
+        uint256 currentRate = pricing.tierPrices(sub.tierId);
+        uint256 newRate = pricing.tierPrices(newTierId);
+
+        if (newRate == 0) revert TierNotConfigured();
+        if (newRate <= currentRate) revert NotAnUpgrade();
+
+        uint256 remainingSeconds = sub.expiry - block.timestamp;
+        uint256 convertedSeconds = (remainingSeconds * currentRate) / newRate;
+
+        uint256 extraSeconds = extraDays * 1 days;
+        if (extraDays > 0) {
+            uint256 requiredWei = pricing.price(newTierId, extraSeconds);
+            if (msg.value < requiredWei) revert InsufficientPayment();
+
+            uint256 excess = msg.value - requiredWei;
+            if (excess > 0) {
+                (bool sent,) = msg.sender.call{value: excess}("");
+                if (!sent) revert RefundFailed();
+            }
+        } else if (msg.value > 0) {
+            (bool sent,) = msg.sender.call{value: msg.value}("");
+            if (!sent) revert RefundFailed();
+        }
+
+        uint256 oldTierId = sub.tierId;
+        uint256 newExpiry = block.timestamp + convertedSeconds + extraSeconds;
+        sub.expiry = newExpiry;
+        sub.tierId = newTierId;
+
+        emit Upgraded(msg.sender, oldTierId, newTierId, newExpiry, msg.value);
+    }
+
+    /**
+     * @notice Preview what expiry a user would get if they upgraded to a new tier (no extra days).
+     * @param subscriber The address to check.
+     * @param newTierId The target tier.
+     * @return newExpiry The projected new expiry timestamp (0 if not upgradeable).
+     * @return convertedSeconds The number of seconds that would remain on the new tier.
+     */
+    function previewUpgrade(address subscriber, uint256 newTierId) external view returns (uint256 newExpiry, uint256 convertedSeconds) {
+        Subscription memory sub = subscriptions[subscriber];
+        if (sub.expiry <= block.timestamp) return (0, 0);
+
+        uint256 currentRate = pricing.tierPrices(sub.tierId);
+        uint256 newRate = pricing.tierPrices(newTierId);
+        if (newRate == 0 || newRate <= currentRate) return (0, 0);
+
+        uint256 remainingSeconds = sub.expiry - block.timestamp;
+        convertedSeconds = (remainingSeconds * currentRate) / newRate;
+        newExpiry = block.timestamp + convertedSeconds;
     }
 
     /**
