@@ -68,14 +68,15 @@ contract BulkRegistrationGasTest is Test {
         bulk.multiCommit(commitments);
         vm.warp(block.timestamp + 61);
 
-        // Price
+        // Per-name prices (passed into multiRegister to avoid a double oracle query)
+        uint256[] memory prices = bulk.rentPrices(names, durations);
         uint256 total = bulk.totalPrice(names, durations);
 
         // Measure multiRegister gas — gasleft() feeds the console summary below,
         // the cheatcode wrapper writes to snapshots/multiRegister.json for branch diffs.
         vm.startSnapshotGas("multiRegister", string.concat("batch_", vm.toString(count)));
         uint256 gasBefore = gasleft();
-        bulk.multiRegister{value: total + 10 ether}(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(count), 0);
+        bulk.multiRegister{value: total + 10 ether}(names, owner, durations, prices, SECRET, PUBLIC_RESOLVER, _emptyData(count), 0);
         uint256 gasUsed = gasBefore - gasleft();
         vm.stopSnapshotGas();
 

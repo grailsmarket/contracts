@@ -61,6 +61,13 @@ contract BulkRegistration is ReverseClaimer {
     }
 
     /**
+     * @dev Accept ETH so the controller can refund us mid-loop when a caller-supplied
+     *      price exceeds the true rent (e.g. stale oracle quote). Anything that lands
+     *      here is swept back to msg.sender at the end of multiRegister.
+     */
+    receive() external payable {}
+
+    /**
      * @notice Check availability of multiple names in a single call
      * @param names Array of ENS labels to check (without .eth suffix)
      * @return Array of booleans indicating availability for each name
@@ -124,14 +131,16 @@ contract BulkRegistration is ReverseClaimer {
     ) external view returns (bytes32[] memory) {
         bytes32[] memory commitments = new bytes32[](names.length);
         for (uint256 i = 0; i < names.length; i++) {
+            string calldata name = names[i];
+            bytes32 labelHash = keccak256(bytes(name));
             commitments[i] = CONTROLLER.makeCommitment(
                 IETHRegistrarController.Registration({
-                    label: names[i],
+                    label: name,
                     owner: owner,
                     duration: durations[i],
                     secret: secret,
                     resolver: resolver,
-                    data: _enrichData(names[i], owner, data[i]),
+                    data: _enrichData(labelHash, owner, data[i]),
                     reverseRecord: reverseRecord,
                     referrer: REFERRER
                 })
@@ -156,9 +165,13 @@ contract BulkRegistration is ReverseClaimer {
      * @dev Requires commitments to have been submitted at least 60 seconds prior.
      *      Each name is priced individually, so mixed-length batches are supported.
      *      Any excess ETH is refunded to msg.sender after all registrations complete.
+     *      Callers must supply `prices` (e.g. from `rentPrices()`); if `prices[i]` is
+     *      below the true rent the controller reverts, and any over-pay is refunded
+     *      by the controller back to this contract and then forwarded to msg.sender.
      * @param names Array of ENS labels to register
      * @param owner Address that will own the registered names
      * @param durations Registration duration in seconds for each name
+     * @param prices Per-name price in wei (base + premium) — caller-supplied to avoid a second oracle query
      * @param secret The same secret used when generating commitments
      * @param resolver Address of the resolver to set for each name
      * @param data Array of resolver data arrays, one per name (data[i] is applied to names[i])
@@ -168,53 +181,75 @@ contract BulkRegistration is ReverseClaimer {
         string[] calldata names,
         address owner,
         uint256[] calldata durations,
+        uint256[] calldata prices,
         bytes32 secret,
         address resolver,
         bytes[][] calldata data,
         uint8 reverseRecord
     ) external payable {
         for (uint256 i = 0; i < names.length; i++) {
-            uint256 cost = _rentPrice(names[i], durations[i]);
-
-            CONTROLLER.register{value: cost}(
-                IETHRegistrarController.Registration({
-                    label: names[i],
-                    owner: owner,
-                    duration: durations[i],
-                    secret: secret,
-                    resolver: resolver,
-                    data: _enrichData(names[i], owner, data[i]),
-                    reverseRecord: reverseRecord,
-                    referrer: REFERRER
-                })
-            );
-
-            emit NameRegistered(names[i], keccak256(bytes(names[i])), owner, cost, durations[i], REFERRER);
+            _registerOne(names[i], owner, durations[i], prices[i], secret, resolver, data[i], reverseRecord);
         }
 
-        if (address(this).balance > 0) {
-            (bool success,) = payable(msg.sender).call{value: address(this).balance}("");
+        // Refund any leftover: caller's overpayment plus any refund the controller sent
+        // back when prices[i] exceeded the true rent (e.g. stale oracle quote).
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success,) = payable(msg.sender).call{value: balance}("");
             if (!success) revert RefundFailed();
         }
     }
 
     /**
+     * @dev Registers a single name and emits NameRegistered. Extracted from multiRegister
+     *      so the per-iteration locals live in a fresh stack frame (avoids
+     *      Yul-pipeline stack-too-deep with 8 caller-facing params).
+     */
+    function _registerOne(
+        string calldata name,
+        address owner,
+        uint256 duration,
+        uint256 cost,
+        bytes32 secret,
+        address resolver,
+        bytes[] calldata data,
+        uint8 reverseRecord
+    ) internal {
+        bytes32 labelHash = keccak256(bytes(name));
+        CONTROLLER.register{value: cost}(
+            IETHRegistrarController.Registration({
+                label: name,
+                owner: owner,
+                duration: duration,
+                secret: secret,
+                resolver: resolver,
+                data: _enrichData(labelHash, owner, data),
+                reverseRecord: reverseRecord,
+                referrer: REFERRER
+            })
+        );
+        emit NameRegistered(name, labelHash, owner, cost, duration, REFERRER);
+    }
+
+    /**
      * @dev Prepend a setAddr(node, owner) call to the resolver data so that
      *      the ETH address record is always set during registration.
-     * @param name The ENS label (without .eth suffix)
+     * @param labelHash Pre-computed keccak256(bytes(label)) for the name
      * @param _owner The address to set as the ETH address record
      * @param originalData Caller-supplied resolver data entries
      * @return enriched A new array with the setAddr call at index 0 followed by originalData
      */
-    function _enrichData(string calldata name, address _owner, bytes[] calldata originalData)
+    function _enrichData(bytes32 labelHash, address _owner, bytes[] calldata originalData)
         internal
         pure
         returns (bytes[] memory enriched)
     {
-        bytes32 node = keccak256(abi.encodePacked(ETH_NODE, keccak256(bytes(name))));
-        enriched = new bytes[](originalData.length + 1);
+        bytes32 node = keccak256(abi.encodePacked(ETH_NODE, labelHash));
+        uint256 originalLen = originalData.length;
+        enriched = new bytes[](originalLen + 1);
         enriched[0] = abi.encodeWithSignature("setAddr(bytes32,address)", node, _owner);
-        for (uint256 i = 0; i < originalData.length; i++) {
+        if (originalLen == 0) return enriched;
+        for (uint256 i = 0; i < originalLen; i++) {
             enriched[i + 1] = originalData[i];
         }
     }
