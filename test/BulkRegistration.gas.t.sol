@@ -71,10 +71,13 @@ contract BulkRegistrationGasTest is Test {
         // Price
         uint256 total = bulk.totalPrice(names, durations);
 
-        // Measure multiRegister gas
+        // Measure multiRegister gas — gasleft() feeds the console summary below,
+        // the cheatcode wrapper writes to snapshots/multiRegister.json for branch diffs.
+        vm.startSnapshotGas("multiRegister", string.concat("batch_", vm.toString(count)));
         uint256 gasBefore = gasleft();
         bulk.multiRegister{value: total + 10 ether}(names, owner, durations, SECRET, PUBLIC_RESOLVER, _emptyData(count), 0);
         uint256 gasUsed = gasBefore - gasleft();
+        vm.stopSnapshotGas();
 
         // Estimate calldata cost: each name is ~10 bytes + ABI overhead
         // multiRegister signature (4) + 7 params * 32 (224) + array headers + name data
