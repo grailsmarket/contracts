@@ -534,7 +534,9 @@ contract BulkRegistrationTest is Test {
         uint256 extra = 0.5 ether;
         uint256 balanceBefore = owner.balance;
 
-        bulk.multiRegister{value: overTotal + extra}(names, owner, durations, overPrices, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0);
+        bulk.multiRegister{value: overTotal + extra}(
+            names, owner, durations, overPrices, SECRET, PUBLIC_RESOLVER, _emptyData(names.length), 0
+        );
 
         // Contract drains to zero (controller refund + user overpay both forwarded)
         assertEq(address(bulk).balance, 0);
@@ -558,7 +560,14 @@ contract NoReceiveCaller {
 
     function doRegister(string[] memory names, uint256[] memory durations, uint256[] memory prices, uint256 value) external {
         bulk.multiRegister{value: value}(
-            names, address(this), durations, prices, bytes32(uint256(1)), 0xF29100983E058B709F3D539b0c765937B804AC15, new bytes[][](names.length), 0
+            names,
+            address(this),
+            durations,
+            prices,
+            bytes32(uint256(1)),
+            0xF29100983E058B709F3D539b0c765937B804AC15,
+            new bytes[][](names.length),
+            0
         );
     }
 }

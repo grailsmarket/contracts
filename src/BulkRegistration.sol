@@ -239,11 +239,7 @@ contract BulkRegistration is ReverseClaimer {
      * @param originalData Caller-supplied resolver data entries
      * @return enriched A new array with the setAddr call at index 0 followed by originalData
      */
-    function _enrichData(bytes32 labelHash, address _owner, bytes[] calldata originalData)
-        internal
-        pure
-        returns (bytes[] memory enriched)
-    {
+    function _enrichData(bytes32 labelHash, address _owner, bytes[] calldata originalData) internal pure returns (bytes[] memory enriched) {
         bytes32 node = keccak256(abi.encodePacked(ETH_NODE, labelHash));
         uint256 originalLen = originalData.length;
         enriched = new bytes[](originalLen + 1);
