@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {IETHRegistrarV2, IETHRenewer} from "./IETHRegistrarV2.sol";
+import {IETHRegistrarV2, IETHRenewer, RenewData} from "./IETHRegistrarV2.sol";
 
 /**
  * @custom:benediction DEVS BENEDICAT ET PROTEGAT CONTRACTVM MEVM
@@ -386,7 +386,7 @@ contract BulkRegistrationV2 is ReverseClaimer, ReentrancyGuardTransient {
      */
     function _renewOne(uint256 index, string calldata label, uint64 duration, IETHRenewer renewer, IERC20 token) internal returns (bool) {
         uint256 gasBefore = gasleft();
-        try renewer.renew(label, duration, token, REFERRER) {
+        try renewer.renew(RenewData(label, duration, REFERRER), token) {
             return true;
         } catch (bytes memory reason) {
             _checkGas(gasBefore);

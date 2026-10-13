@@ -5,7 +5,7 @@ import {Test, Vm} from "forge-std/Test.sol";
 import {ENS} from "ens-contracts/registry/ENS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BulkRegistrationV2} from "../src/BulkRegistrationV2.sol";
-import {IETHRegistrarV2, IETHRenewer} from "../src/IETHRegistrarV2.sol";
+import {IETHRegistrarV2, IETHRenewer, RenewData} from "../src/IETHRegistrarV2.sol";
 
 interface IPermissionedRegistryView {
     function getStatus(uint256 anyId) external view returns (uint8);
@@ -15,8 +15,7 @@ interface IPermissionedRegistryView {
 
 interface IBaseRegistrarView {
     function nameExpires(uint256 id) external view returns (uint256);
-    function owner() external view returns (address);
-    function addController(address controller) external;
+    function controllers(address controller) external view returns (bool);
 }
 
 interface IERC20PermitFull {
@@ -26,29 +25,30 @@ interface IERC20PermitFull {
 
 /// @dev Renewer that burns every unit of gas it is given, to exercise the out-of-gas guard.
 contract GasBurningRenewer {
-    function renew(string calldata, uint64, IERC20, bytes32) external pure {
+    function renew(RenewData calldata, IERC20) external pure {
         while (true) {}
     }
 }
 
 /**
- * @dev Fork tests against the live ENSv2 Sepolia deployment (contracts-v2 `deployments/sepolia`).
+ * @dev Fork tests against the live ENSv2 Sepolia deployment (contracts-v2 `deployments/sepolia`,
+ *      deployed 2026-10-01).
  *      Uses SEPOLIA_RPC_URL if set, otherwise a public endpoint. Pinned to a block for caching.
  */
 contract BulkRegistrationV2Test is Test {
     BulkRegistrationV2 public bulk;
 
-    IETHRegistrarV2 constant REGISTRAR = IETHRegistrarV2(0xa4449a0dD2b83007553D9b1d28b583A46A805a30);
-    IETHRenewer constant RENEWER_V1 = IETHRenewer(0x1BE516Ae1B72765aE55bD5e9ca628c9058a1C622);
-    IPermissionedRegistryView constant ETH_REGISTRY = IPermissionedRegistryView(0x67b728a792e789a8978b30cF1b3b641f19354b43);
+    IETHRegistrarV2 constant REGISTRAR = IETHRegistrarV2(0xf633e7FC17e2bbE0D0965D18ec1821dcB754a3d3);
+    IETHRenewer constant RENEWER_V1 = IETHRenewer(0xf2ece44980778966b8a0FccB3A9E339440f6e045);
+    IPermissionedRegistryView constant ETH_REGISTRY = IPermissionedRegistryView(0xD4eBcbBdF463C9c45784603Db0dDD499BC44A8B4);
     IBaseRegistrarView constant BASE_REGISTRAR = IBaseRegistrarView(0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85);
-    IERC20 constant USDC = IERC20(0xD3322B29a7BdEe707D1684676f149bf41Aa3422f); // MockUSDC, 6 decimals, EIP-2612
-    IERC20 constant DAI = IERC20(0xE33a01a41eE4a68616B5278183aa88808326ED8E); // MockDAI, 18 decimals
+    IERC20 constant USDC = IERC20(0x240b0316Df57887DBBE58b586508b19e633a14aa); // MockUSDC, 6 decimals, EIP-2612
+    IERC20 constant DAI = IERC20(0xF6faC8A58a0BE13b9197f27C41B73162Fe32572b); // MockDAI, 18 decimals
     address constant BENEFICIARY = 0x84D3a426D4E12E955d1DF95db0B24fe26afE39D3;
     address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
-    address constant RESOLVER = 0xd25f66Dd4fF61486c2c5c1E6201A23576698D3df; // PublicResolverV2
+    address constant RESOLVER = 0xdC4a563d00F5c3012b699794eB9e13A561Be386F; // PublicResolverV2
 
-    uint256 constant FORK_BLOCK = 11_874_550;
+    uint256 constant FORK_BLOCK = 11_903_000;
     bytes32 constant REFERRER = bytes32(uint256(uint160(0xdead)));
     bytes32 constant SECRET = bytes32(uint256(1));
     uint64 constant DURATION = 365 days;
@@ -57,8 +57,8 @@ contract BulkRegistrationV2Test is Test {
     string constant NAME3 = "qxz";
     string constant NAME4 = "qxzw";
     string constant NAME5 = "qxzwvgrails";
-    // REGISTERED on v2 -> renews via ETHRegistrar
-    string constant V2_NAME = "vitalik";
+    // Registered in setUp, so REGISTERED on v2 -> renews via ETHRegistrar
+    string constant V2_NAME = "qxzgrailsv2";
     // RESERVED (pre-migrated v1) -> renews via ETHRenewerV1
     string constant V1_NAME = "agentic";
     string constant V1_NAME2 = "brown";
@@ -71,10 +71,8 @@ contract BulkRegistrationV2Test is Test {
         (user, userKey) = makeAddrAndKey("grails-bulk-v2-user");
         assertEq(user.code.length, 0, "user must be an EOA to receive ERC1155 mints");
 
-        // Sepolia's fresh v2 deployment has not run migration phase 4 (authorize ETHRenewerV1
-        // as a v1 BaseRegistrar controller), so RESERVED renewals would revert. Simulate it.
-        vm.prank(BASE_REGISTRAR.owner());
-        BASE_REGISTRAR.addController(address(RENEWER_V1));
+        // Migration phase 4 (ETHRenewerV1 is a v1 BaseRegistrar controller) is live on Sepolia
+        assertTrue(BASE_REGISTRAR.controllers(address(RENEWER_V1)), "phase 4 not reached at FORK_BLOCK");
 
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = USDC;
@@ -86,6 +84,13 @@ contract BulkRegistrationV2Test is Test {
         vm.startPrank(user);
         USDC.approve(address(bulk), type(uint256).max);
         DAI.approve(address(bulk), type(uint256).max);
+
+        // REGISTERED fixture: register V2_NAME directly with the ETHRegistrar
+        REGISTRAR.commit(REGISTRAR.makeCommitment(V2_NAME, user, SECRET, address(0), RESOLVER, DURATION, REFERRER));
+        vm.warp(block.timestamp + 61);
+        (uint256 base, uint256 premium) = REGISTRAR.getRegisterPrice(V2_NAME, DURATION, USDC);
+        USDC.approve(address(REGISTRAR), base + premium);
+        REGISTRAR.register(V2_NAME, user, SECRET, address(0), RESOLVER, DURATION, USDC, REFERRER);
         vm.stopPrank();
     }
 

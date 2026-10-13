@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ENS} from "ens-contracts/registry/ENS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BulkRegistrationV2} from "../src/BulkRegistrationV2.sol";
-import {IETHRegistrarV2, IETHRenewer} from "../src/IETHRegistrarV2.sol";
+import {IETHRegistrarV2, IETHRenewer, RenewData} from "../src/IETHRegistrarV2.sol";
 
 /**
  * @dev Gas benchmarks on the ENSv2 Sepolia deployment. Each batch is compared against the same
@@ -16,13 +16,13 @@ import {IETHRegistrarV2, IETHRenewer} from "../src/IETHRegistrarV2.sol";
 contract BulkRegistrationV2GasTest is Test {
     BulkRegistrationV2 public bulk;
 
-    IETHRegistrarV2 constant REGISTRAR = IETHRegistrarV2(0xa4449a0dD2b83007553D9b1d28b583A46A805a30);
-    IETHRenewer constant RENEWER_V1 = IETHRenewer(0x1BE516Ae1B72765aE55bD5e9ca628c9058a1C622);
-    IERC20 constant USDC = IERC20(0xD3322B29a7BdEe707D1684676f149bf41Aa3422f);
+    IETHRegistrarV2 constant REGISTRAR = IETHRegistrarV2(0xf633e7FC17e2bbE0D0965D18ec1821dcB754a3d3);
+    IETHRenewer constant RENEWER_V1 = IETHRenewer(0xf2ece44980778966b8a0FccB3A9E339440f6e045);
+    IERC20 constant USDC = IERC20(0x240b0316Df57887DBBE58b586508b19e633a14aa);
     address constant ENS_REGISTRY = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e;
-    address constant RESOLVER = 0xd25f66Dd4fF61486c2c5c1E6201A23576698D3df;
+    address constant RESOLVER = 0xdC4a563d00F5c3012b699794eB9e13A561Be386F;
 
-    uint256 constant FORK_BLOCK = 11_874_550;
+    uint256 constant FORK_BLOCK = 11_903_000;
     bytes32 constant REFERRER = bytes32(uint256(uint160(0xdead)));
     bytes32 constant SECRET = bytes32(uint256(1));
     uint64 constant DURATION = 365 days;
@@ -121,7 +121,7 @@ contract BulkRegistrationV2GasTest is Test {
 
         g = gasleft();
         for (uint256 i = 0; i < count; i++) {
-            REGISTRAR.renew(directLabels[i], DURATION, USDC, REFERRER);
+            REGISTRAR.renew(RenewData(directLabels[i], DURATION, REFERRER), USDC);
         }
         uint256 directGas = g - gasleft();
         vm.stopPrank();

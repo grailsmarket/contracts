@@ -4,13 +4,22 @@ pragma solidity >=0.8.24 <0.9.0;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
+ * @notice Renewal parameters for `IETHRenewer.renew`, ABI-identical to the ENSv2 `RenewData`.
+ */
+struct RenewData {
+    string label;
+    uint64 duration;
+    bytes32 referrer;
+}
+
+/**
  * @notice Minimal subset of the ENSv2 `IETHRenewer` interface.
  * @dev Implemented by both `ETHRegistrar` (REGISTERED names) and `ETHRenewerV1`
  *      (RESERVED, i.e. pre-migrated but unmigrated v1 names).
  *      https://github.com/ensdomains/contracts-v2/blob/main/contracts/src/registrar/interfaces/IETHRenewer.sol
  */
 interface IETHRenewer {
-    function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer) external;
+    function renew(RenewData calldata rd, IERC20 paymentToken) external;
 
     function getRenewPrice(string calldata label, uint64 duration, IERC20 paymentToken) external view returns (uint256);
 

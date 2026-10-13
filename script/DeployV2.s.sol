@@ -18,10 +18,10 @@ contract DeployV2 is Script {
     address constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant MAINNET_DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
-    address constant SEPOLIA_REGISTRAR = 0xa4449a0dD2b83007553D9b1d28b583A46A805a30;
-    address constant SEPOLIA_RENEWER_V1 = 0x1BE516Ae1B72765aE55bD5e9ca628c9058a1C622;
-    address constant SEPOLIA_USDC = 0xD3322B29a7BdEe707D1684676f149bf41Aa3422f; // MockUSDC
-    address constant SEPOLIA_DAI = 0xE33a01a41eE4a68616B5278183aa88808326ED8E; // MockDAI
+    address constant SEPOLIA_REGISTRAR = 0xf633e7FC17e2bbE0D0965D18ec1821dcB754a3d3;
+    address constant SEPOLIA_RENEWER_V1 = 0xf2ece44980778966b8a0FccB3A9E339440f6e045;
+    address constant SEPOLIA_USDC = 0x240b0316Df57887DBBE58b586508b19e633a14aa; // MockUSDC
+    address constant SEPOLIA_DAI = 0xF6faC8A58a0BE13b9197f27C41B73162Fe32572b; // MockDAI
 
     function run() external {
         address deployer = vm.envAddress("DEPLOYER");
