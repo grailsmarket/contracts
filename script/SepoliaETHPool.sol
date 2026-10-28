@@ -18,7 +18,6 @@ interface IMintableERC20 {
 
 /// @dev Minimal v4-periphery PositionManager interface
 interface IPositionManagerMinimal {
-    function initializePool(PoolKey calldata key, uint160 sqrtPriceX96) external payable returns (int24);
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline) external payable;
 }
 
@@ -90,7 +89,8 @@ abstract contract SepoliaETHPool {
         (uint160 sqrtPriceX96,,,) = SEPOLIA_POOL_MANAGER.getSlot0(key.toId());
         if (sqrtPriceX96 == 0) {
             sqrtPriceX96 = _sqrtPriceX96(usdcPerEth);
-            SEPOLIA_POSITION_MANAGER.initializePool(key, sqrtPriceX96);
+            // Directly, not via PositionManager.initializePool, whose try/catch hides failures (e.g. out of gas)
+            SEPOLIA_POOL_MANAGER.initialize(key, sqrtPriceX96);
         }
 
         int24 tickLower = TickMath.minUsableTick(POOL_TICK_SPACING);

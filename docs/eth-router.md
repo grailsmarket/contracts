@@ -54,7 +54,8 @@ USDC** (not swapped back to ETH), so say so in the UI.
 | V4Quoter        | `0x52F0E24D1c21C8A0cB1e5a5dD6198556BD9E1203` | `0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227` |
 | BulkRegistrationV2 | `0x438edcB58703dfB2e1D4Bb5E54a280E75A95ad90` | `0x3C549e0FFdD3951afB95B7be97bf4D844d8C3244` |
 | USDC            | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | `0x240b0316Df57887DBBE58b586508b19e633a14aa` (MockUSDC) |
-| ETH/USDC pool id (fee 500, ts 10, no hook) | `0x21c67e77068de97969ba93d4aab21826d33ca12bb9f565d8496e8fda8a82ca27` | created by `SetupSepoliaPool.s.sol` |
+| ETH/USDC pool id (fee 500, ts 10, no hook) | `0x21c67e77068de97969ba93d4aab21826d33ca12bb9f565d8496e8fda8a82ca27` | `0x9da8ca8ce50c78b62c6b3b44227ce13267b64f79bdfd1ee4b12678e2017022cc` |
+| GrailsETHRouter | `0x83827712Df81AF5A85A532a6Bf08c3F74d1fc707` (2026-10-28) | `0x9aF326d7ab5429744db5d7EcA6545BEC97490F3b` (2026-10-27) |
 
 Mainnet pool choice (2026-10-27): the 0.05% pool beats 0.01% on depth, and beats 0.3% on fee for
 typical batch sizes (well under $10k). The 0.3% pool has more in-range liquidity, so revisit if
@@ -67,20 +68,29 @@ router adds about **124k** (swap, settle/take, refunds). Snapshot: `snapshots/et
 
 ## Sepolia
 
-ENS's MockUSDC has no Uniswap liquidity, so create a pool first (MockUSDC has a public `mint`):
+ENS's MockUSDC has no Uniswap liquidity, so create a pool first (MockUSDC has a public `mint`).
+
+Forge simulates gas with its local EVM rules, and Sepolia charges roughly 2–2.6x more for new
+storage slots and ~7x more for deploying contracts, so forge's gas limits run out (seen
+2026-10-27). Pad them; unused gas isn't charged. Set the flags on their own line: as a prefix on
+the same command, `$SEPOLIA_FLAGS` expands before it's set and silently becomes empty.
 
 ```bash
+SEPOLIA_FLAGS="--slow --gas-estimate-multiplier 500"
+
 # 1. Create + fund the ETH/MockUSDC 0.05% pool (default 0.3 ETH at 2500 USDC/ETH)
-SENDER=0x... forge script script/SetupSepoliaPool.s.sol --rpc-url sepolia --account <keystore> --broadcast
+SENDER=0x... forge script script/SetupSepoliaPool.s.sol --rpc-url sepolia --account <keystore> --broadcast $SEPOLIA_FLAGS
 
 # 2. Deploy the router
-DEPLOYER=0x... forge script script/DeployETHRouter.s.sol --rpc-url sepolia --account <keystore> --broadcast --verify
+# Contract creation is repriced even harder (node: ~14M gas vs forge's ~2M), so use 750. Don't go
+# above ~800: since Fusaka a transaction can't use more than 16,777,216 gas.
+DEPLOYER=0x... forge script script/DeployETHRouter.s.sol --rpc-url sepolia --account <keystore> --broadcast --slow --gas-estimate-multiplier 750 --verify
 
 # 3. Smoke test (commit, wait 60s, then pay with ETH)
 export SENDER=0x... ROUTER=0x... LABELS=name1,name2 SECRET=0x...
-forge script script/BulkV2Smoke.s.sol --sig "commit()" --rpc-url sepolia --account <keystore> --broadcast
-forge script script/BulkV2Smoke.s.sol --sig "registerETH()" --rpc-url sepolia --account <keystore> --broadcast
-forge script script/BulkV2Smoke.s.sol --sig "renewETH()" --rpc-url sepolia --account <keystore> --broadcast
+forge script script/BulkV2Smoke.s.sol --sig "commit()" --rpc-url sepolia --account <keystore> --broadcast $SEPOLIA_FLAGS
+forge script script/BulkV2Smoke.s.sol --sig "registerETH()" --rpc-url sepolia --account <keystore> --broadcast $SEPOLIA_FLAGS
+forge script script/BulkV2Smoke.s.sol --sig "renewETH()" --rpc-url sepolia --account <keystore> --broadcast $SEPOLIA_FLAGS
 ```
 
 Nobody arbitrages the Sepolia pool, so its price drifts up a little with every test purchase.
