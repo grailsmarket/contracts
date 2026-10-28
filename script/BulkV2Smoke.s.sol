@@ -32,8 +32,7 @@ contract BulkV2Smoke is Script {
 
     function commit() external {
         (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) = _setup();
-        bytes32[] memory commitments =
-            bulk.makeCommitments(labels, sender, durations, vm.envBytes32("SECRET"), address(0), _resolver());
+        bytes32[] memory commitments = bulk.makeCommitments(labels, sender, durations, vm.envBytes32("SECRET"), address(0), _resolver());
 
         vm.startBroadcast(sender);
         bulk.multiCommit(commitments);
@@ -76,11 +75,7 @@ contract BulkV2Smoke is Script {
         }
     }
 
-    function _setup()
-        internal
-        view
-        returns (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations)
-    {
+    function _setup() internal view returns (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) {
         require(block.chainid == 11155111, "Sepolia only");
         bulk = BulkRegistrationV2(vm.envOr("BULK", SEPOLIA_BULK));
         sender = vm.envAddress("SENDER");
