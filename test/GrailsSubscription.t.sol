@@ -681,5 +681,4 @@ contract GrailsSubscriptionTest is Test {
 /// @dev Helper contract with no receive/fallback — triggers WithdrawFailed
 contract NoReceiveOwner {
     // No receive() or fallback() — ETH transfers will fail
-
-    }
+}
