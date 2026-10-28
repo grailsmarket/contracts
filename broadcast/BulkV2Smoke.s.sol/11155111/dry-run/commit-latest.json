@@ -1,0 +1,32 @@
+{
+  "transactions": [
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "BulkRegistrationV2",
+      "contractAddress": "0x3c549e0ffdd3951afb95b7be97bf4d844d8c3244",
+      "function": "multiCommit(bytes32[])",
+      "arguments": [
+        "[0xffaf501445321fce57e95cfa47039ad84025f014b8aa6a012d385424f1c351b0, 0x33dbdc3286a135d9b85e490a0307bd8cfa3674cdbf5f21850b4cc9a24109edbf]"
+      ],
+      "transaction": {
+        "from": "0x000000000000000000000000000000000000dead",
+        "to": "0x3c549e0ffdd3951afb95b7be97bf4d844d8c3244",
+        "gas": "0x19afc",
+        "value": "0x0",
+        "input": "0xd16050e600000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002ffaf501445321fce57e95cfa47039ad84025f014b8aa6a012d385424f1c351b033dbdc3286a135d9b85e490a0307bd8cfa3674cdbf5f21850b4cc9a24109edbf",
+        "nonce": "0x0",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1791862543403,
+  "chain": 11155111,
+  "commit": "6ae6740"
+}

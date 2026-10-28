@@ -1,0 +1,32 @@
+{
+  "transactions": [
+    {
+      "hash": "0xe44666cd27681ab469fb8b7b64d9d2c7d1a8680a7abe6b85f3df8e31b0fe4c59",
+      "transactionType": "CALL",
+      "contractName": "BulkRegistrationV2",
+      "contractAddress": "0x3c549e0ffdd3951afb95b7be97bf4d844d8c3244",
+      "function": "multiCommit(bytes32[])",
+      "arguments": [
+        "[0xe48f0cc8472c59729baf751bb1c75e16e9ba0157091ae292d9fb45fa46c492a3, 0xec8cd2ab2b052b84208c104d4d0393e1bfbf80015d007b98c6106c0088310f19, 0x2261ead76121ab6bf892795c380134bb3c05ec9e812c774144d78f3748df0f63]"
+      ],
+      "transaction": {
+        "from": "0xc9c3a4337a1bba75d0860a1a81f7b990dc607334",
+        "to": "0x3c549e0ffdd3951afb95b7be97bf4d844d8c3244",
+        "gas": "0x2256d",
+        "value": "0x0",
+        "input": "0xd16050e600000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003e48f0cc8472c59729baf751bb1c75e16e9ba0157091ae292d9fb45fa46c492a3ec8cd2ab2b052b84208c104d4d0393e1bfbf80015d007b98c6106c0088310f192261ead76121ab6bf892795c380134bb3c05ec9e812c774144d78f3748df0f63",
+        "nonce": "0x1b",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1791864433670,
+  "chain": 11155111,
+  "commit": "7340c0b"
+}
