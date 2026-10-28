@@ -47,16 +47,18 @@ An empty `v1Bitmap` routes everything to `ETHRegistrar`.
 - From phase 4, `RESERVED` names renew via `ETHRenewerV1`, so bulk renewal is usable from then on.
 - From phase 6, `ETHRegistrar` has registry roles, so registration and `REGISTERED` renewals open.
 
-On Sepolia's current deployment phase 6 is done, but `ETHRenewerV1` is not yet a v1 `BaseRegistrar`
-controller (phase 4). The fork tests simulate phase 4 in `setUp`.
+The fork tests target the Sepolia deployment from 2026-10-01 (contracts-v2 `deployments/sepolia`:
+`ETHRegistrar` 0xf633e7FC17e2bbE0D0965D18ec1821dcB754a3d3, `ETHRenewerV1` 0xf2ece44980778966b8a0FccB3A9E339440f6e045).
+Phases 4 and 6 are both live there. ENS redeploys Sepolia periodically. When it does, update the
+addresses in `script/DeployV2.s.sol` and the tests, and redeploy this contract, since its registrar and renewer are immutable.
 
 ## Gas (Sepolia fork, MockUSDC, 10-char names)
 
 | Batch | multiRegister | per name | multiRenew (v2) | per name |
 |------:|--------------:|---------:|----------------:|---------:|
-|    10 |     1,629,952 |  162,995 |         369,482 |   36,948 |
-|    50 |     7,918,545 |  158,370 |       1,703,031 |   34,060 |
-|   100 |    15,780,342 |  157,803 |       3,371,452 |   33,714 |
+|    10 |     1,632,187 |  163,219 |         393,185 |   39,319 |
+|    50 |     7,926,380 |  158,528 |       1,818,354 |   36,367 |
+|   100 |    15,795,177 |  157,952 |       3,601,697 |   36,017 |
 
 Overhead compared with calling `ETHRegistrar` in a loop is roughly 0–6k gas per name, within measurement
 noise of the in-test loop. A bulk transaction saves the 21k intrinsic cost per name compared with separate
