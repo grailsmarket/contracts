@@ -30,6 +30,9 @@ Solidity contracts for [Grails](https://grails.app): batch ENS `.eth` name regis
 | `src/IGrailsPricing.sol` | Interface for the pricing contract |
 | `script/Deploy.s.sol` | Deployment script for BulkRegistration (mainnet + sepolia) |
 | `script/DeploySubscription.s.sol` | Deployment script for GrailsPricing + GrailsSubscription |
+| `src/GrailsETHRouter.sol` | Pay for ENSv2 bulk registrations/renewals with ETH via a Uniswap v4 swap (see `docs/eth-router.md`) |
+| `script/DeployETHRouter.s.sol` | Deployment script for GrailsETHRouter (mainnet + sepolia) |
+| `script/SetupSepoliaPool.s.sol` | Creates and funds the ETH/MockUSDC v4 pool the router uses on Sepolia |
 
 ## Usage
 

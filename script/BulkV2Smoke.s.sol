@@ -4,6 +4,8 @@ pragma solidity >=0.8.24 <0.9.0;
 import {Script, console} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BulkRegistrationV2} from "../src/BulkRegistrationV2.sol";
+import {GrailsETHRouter} from "../src/GrailsETHRouter.sol";
+import {IV4QuoterMinimal} from "./SepoliaETHPool.sol";
 
 interface IMintable {
     function mint(address to, uint256 amount) external;
@@ -25,10 +27,15 @@ interface IMintable {
  *
  *      renew() takes any names (anyone can renew), so LABELS can mix v2 names with unmigrated v1
  *      names to exercise both renewers. Drop --broadcast for a dry run.
+ *
+ *      Paying with ETH through GrailsETHRouter (needs ROUTER; optional HEADROOM_BPS, default 50):
+ *      3. forge script script/BulkV2Smoke.s.sol --sig "registerETH()" --rpc-url sepolia --account <keystore> --broadcast
+ *      4. forge script script/BulkV2Smoke.s.sol --sig "renewETH()" --rpc-url sepolia --account <keystore> --broadcast
  */
 contract BulkV2Smoke is Script {
     address constant SEPOLIA_BULK = 0x3C549e0FFdD3951afB95B7be97bf4D844d8C3244;
     address constant SEPOLIA_USDC = 0x240b0316Df57887DBBE58b586508b19e633a14aa; // MockUSDC
+    address constant SEPOLIA_V4_QUOTER = 0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227;
 
     function commit() external {
         (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) = _setup();
@@ -73,6 +80,64 @@ contract BulkV2Smoke is Script {
             bool viaV1 = (v1Bitmap[i >> 8] >> (i & 255)) & 1 == 1;
             console.log("%s.eth renewed=%s via %s", labels[i], renewed[i], viaV1 ? "ETHRenewerV1" : "ETHRegistrar");
         }
+    }
+
+    function registerETH() external {
+        (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) = _setup();
+        GrailsETHRouter router = GrailsETHRouter(vm.envAddress("ROUTER"));
+        (, uint256 total) = bulk.registerQuote(labels, durations, IERC20(SEPOLIA_USDC));
+        require(total > 0, "nothing registrable (taken, invalid or too short a duration)");
+        (uint256 ethQuote, uint256 ethValue) = _ethValue(router, total);
+
+        uint256 ethBefore = sender.balance;
+        vm.startBroadcast(sender);
+        uint256[] memory tokenIds = router.multiRegisterWithETH{value: ethValue}(
+            labels, sender, durations, vm.envBytes32("SECRET"), address(0), _resolver(), total, block.timestamp + 10 minutes, address(0)
+        );
+        vm.stopBroadcast();
+
+        _logETH(total, ethQuote, ethValue, ethBefore - sender.balance);
+        for (uint256 i = 0; i < labels.length; i++) {
+            console.log("%s.eth -> token %s", labels[i], tokenIds[i]);
+        }
+    }
+
+    function renewETH() external {
+        (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) = _setup();
+        GrailsETHRouter router = GrailsETHRouter(vm.envAddress("ROUTER"));
+        (, uint256 total, uint256[] memory v1Bitmap) = bulk.renewQuote(labels, durations, IERC20(SEPOLIA_USDC));
+        require(total > 0, "nothing renewable");
+        (uint256 ethQuote, uint256 ethValue) = _ethValue(router, total);
+
+        uint256 ethBefore = sender.balance;
+        vm.startBroadcast(sender);
+        bool[] memory renewed =
+            router.multiRenewWithETH{value: ethValue}(labels, durations, v1Bitmap, total, block.timestamp + 10 minutes, address(0));
+        vm.stopBroadcast();
+
+        _logETH(total, ethQuote, ethValue, ethBefore - sender.balance);
+        for (uint256 i = 0; i < labels.length; i++) {
+            console.log("%s.eth renewed=%s", labels[i], renewed[i]);
+        }
+    }
+
+    // Quote the ETH for `usdcAmount` on the router's pool and add HEADROOM_BPS
+    function _ethValue(GrailsETHRouter router, uint256 usdcAmount) internal returns (uint256 ethQuote, uint256 ethValue) {
+        (ethQuote,) = IV4QuoterMinimal(SEPOLIA_V4_QUOTER)
+            .quoteExactOutputSingle(
+                IV4QuoterMinimal.QuoteExactSingleParams({
+                    poolKey: router.poolKey(), zeroForOne: true, exactAmount: uint128(usdcAmount), hookData: ""
+                })
+            );
+        ethValue = ethQuote * (10_000 + vm.envOr("HEADROOM_BPS", uint256(50))) / 10_000;
+    }
+
+    // Gas is not included in the spent figure when simulating; on broadcast it includes gas
+    function _logETH(uint256 usdcAmount, uint256 ethQuote, uint256 ethValue, uint256 ethSpent) internal pure {
+        console.log("USDC bought:", usdcAmount);
+        console.log("ETH quoted:", ethQuote);
+        console.log("ETH sent:", ethValue);
+        console.log("ETH spent (sender balance change):", ethSpent);
     }
 
     function _setup() internal view returns (BulkRegistrationV2 bulk, address sender, string[] memory labels, uint64[] memory durations) {
