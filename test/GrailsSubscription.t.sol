@@ -682,4 +682,4 @@ contract GrailsSubscriptionTest is Test {
 contract NoReceiveOwner {
     // No receive() or fallback() — ETH transfers will fail
 
-    }
+}
